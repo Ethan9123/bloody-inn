@@ -1,0 +1,12 @@
+# 编辑器 / 工具
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 原版规则书与 PNP 素材为出版商/汉化者版权所有，不随本仓库公开发布
+*.pdf
+*.zip
+血腥旅馆简体中文PNP/
+*.jpg
