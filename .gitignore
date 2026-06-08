@@ -10,3 +10,6 @@ Thumbs.db
 *.zip
 血腥旅馆简体中文PNP/
 *.jpg
+*.png
+steam_assets/
+steam_page.html
