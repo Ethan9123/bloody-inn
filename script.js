@@ -114,7 +114,7 @@ const CARNIE_TRAVELERS = [
     { name: "大力士 (Strongman)", role: "carnie", color: "carnie-orange", rank: 3, buildRank: 2, loot: 6, annexName: "铁锤游戏 (Hammer Game)", annexDesc: "建造时获得 4F。", aptitude: "build" },
     { name: "空中飞人 (Acrobat)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 0, loot: 3, annexName: "高台 (High Wire)", annexDesc: "建造时获得 1F，并可把一名小酒馆农民加入手牌。", aptitude: "build" },
     { name: "侏儒 (Dwarf)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 2, loot: 5, annexName: "小舞台 (Tiny Stage)", annexDesc: "特殊埋葬：埋入别馆时不占用容量。", aptitude: "bury", specialBurial: "dwarf" },
-    { name: "大胡子女士 (Bearded Lady)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 1, loot: 8, annexName: "梳妆间 (Dressing Room)", annexDesc: "特殊埋葬：应埋在对手别馆下；本版中会额外罚 2F 表示分赃。", aptitude: "bribe", specialBurial: "bearded" },
+    { name: "大胡子女士 (Bearded Lady)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 1, loot: 8, annexName: "梳妆间 (Dressing Room)", annexDesc: "特殊埋葬：埋葬她时油水须与对手（叔叔）平分——你只得一半(向上取整)，另一半归对手。", aptitude: "bribe", specialBurial: "bearded" },
     { name: "双胞胎 (Twins)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 3, loot: 7, annexName: "双人房 (Twin Room)", annexDesc: "特殊埋葬：结算平局时按 2 具尸体计。", aptitude: "bury", specialBurial: "twins" }
 ];
 
@@ -147,22 +147,22 @@ const CARNIE_EVENTS = [
 ];
 
 const OBJECT_CARDS = [
-    { id: "cake", name: "蛋糕", cost: 0, timing: "黄昏", desc: "本轮退房时你额外获得 2F。", effect: "extra_rent" },
-    { id: "gold_teeth", name: "金牙", cost: 0, timing: "埋尸", desc: "下一次埋尸额外获得 2F。", effect: "bury_bonus" },
-    { id: "letter", name: "举报信", cost: 0, timing: "黄昏", desc: "本轮清晨强制触发警察调查。", effect: "force_police" },
-    { id: "rug", name: "地毯", cost: 0, timing: "任意", desc: "隐藏一具未埋尸体，跳过一次调查。", effect: "hide_corpse" },
-    { id: "coffee", name: "咖啡", cost: 1, timing: "黄昏", desc: "立刻获得 1F，并让本轮退房额外 +1F。", effect: "coffee" },
+    { id: "cake", name: "蛋糕", cost: 0, timing: "黄昏", desc: "放在一名住客上：其本轮退房时你额外获得 2F。", effect: "extra_rent" },
+    { id: "gold_teeth", name: "金牙", cost: 0, timing: "埋尸", desc: "下一次埋尸额外多掠夺 2F。", effect: "bury_bonus" },
+    { id: "letter", name: "举报信", cost: 0, timing: "黄昏", desc: "本轮清晨即使没有警察，也强制按调查处理所有未埋尸体。", effect: "force_police" },
+    { id: "rug", name: "地毯", cost: 0, timing: "清晨", desc: "把 1 具未埋尸体扫到地毯下，本轮调查不会被发现。", effect: "hide_corpse" },
+    { id: "coffee", name: "咖啡", cost: 1, timing: "黄昏", desc: "立刻获得 2F。", effect: "coffee" },
     { id: "hammer", name: "锤子", cost: 1, timing: "建造", desc: "下一次建造打出的帮工全部返回手牌。", effect: "return_build" },
     { id: "liquor", name: "烈酒", cost: 1, timing: "拉拢", desc: "下一次拉拢打出的帮工全部返回手牌。", effect: "return_bribe" },
-    { id: "snow", name: "雪堆", cost: 1, timing: "清晨", desc: "保护 1 具未埋尸体免于警察处理。", effect: "hide_corpse" },
+    { id: "snow", name: "雪堆", cost: 1, timing: "清晨", desc: "盖住 1 具未埋尸体，本轮警察调查不处理它（仅一轮）。", effect: "hide_corpse" },
     { id: "bible", name: "圣经", cost: 2, timing: "埋尸", desc: "下一次埋尸打出的帮工全部返回手牌。", effect: "return_bury" },
-    { id: "confessional", name: "告解室", cost: 2, timing: "清晨", desc: "若你落后，立刻获得 3F。", effect: "catchup" },
-    { id: "tomb", name: "墓碑", cost: 2, timing: "清晨", desc: "移除 1 具未埋尸体，免去罚款。", effect: "remove_corpse" },
+    { id: "confessional", name: "告解室", cost: 2, timing: "清晨", desc: "若你埋的尸体比对手少，立刻获得 6F。", effect: "catchup" },
+    { id: "tomb", name: "墓碑", cost: 2, timing: "清晨", desc: "调查时把 1 具未埋尸体移入墓碑，免去其罚款。", effect: "remove_corpse" },
     { id: "wolf_trap", name: "狼夹", cost: 2, timing: "刺杀", desc: "下一次刺杀打出的帮工全部返回手牌。", effect: "return_kill" },
-    { id: "poison", name: "毒药", cost: 3, timing: "黄昏", desc: "杀死最低等级旅客，尸体归你。", effect: "poison" },
-    { id: "quicklime", name: "生石灰", cost: 3, timing: "埋尸", desc: "下一次埋尸费用 -1。", effect: "bury_discount" },
-    { id: "well", name: "井", cost: 3, timing: "刺杀", desc: "下一次刺杀后，尸体直接移出游戏。", effect: "well" },
-    { id: "wheelbarrow", name: "独轮车", cost: 3, timing: "建造", desc: "你可以从旅馆中直接建造一名旅客的别馆。", effect: "build_from_room" }
+    { id: "poison", name: "毒药", cost: 3, timing: "黄昏", desc: "毒杀旅馆中油水最高的一名旅客，尸体归你（无需帮工）。", effect: "poison" },
+    { id: "quicklime", name: "生石灰", cost: 3, timing: "埋尸", desc: "下一次埋尸费用 -1 张帮工。", effect: "bury_discount" },
+    { id: "well", name: "井", cost: 3, timing: "刺杀", desc: "下一次刺杀后，尸体直接移出游戏（无需埋葬）。", effect: "well" },
+    { id: "wheelbarrow", name: "独轮车", cost: 3, timing: "建造", desc: "可直接把旅馆房间里旅客的别馆建出来，无需先拉拢。", effect: "build_from_room" }
 ];
 
 // ==========================================
@@ -973,11 +973,7 @@ function finishPlayerAction() {
             let cIdx = player.corpses.findIndex(c => c.id === corpse.id);
             if (cIdx !== -1) player.corpses.splice(cIdx, 1);
             targetSlot.buried.push(corpse);
-            let loot = corpse.loot + (objectEffects.buryBonus || 0);
-            objectEffects.buryBonus = 0;
-            addPlayerCash(loot);
-            logMessage("玩家", `将 ${corpse.name} 的尸体埋入别馆 ${targetSlot.card.annexName} 下，掠夺 ${loot}F！`, "player");
-            playEffect('bury', `+${loot}F`, document.getElementById('player-annexes'));
+            awardBuryLoot(corpse, targetSlot.card.annexName, false);
         } else {
             targets.forEach(corpse => {
                 let targetSlot = null;
@@ -992,11 +988,7 @@ function finishPlayerAction() {
                 let cIdx = player.corpses.findIndex(c => c.id === corpse.id);
                 if (cIdx !== -1) player.corpses.splice(cIdx, 1);
                 targetSlot.buried.push(corpse);
-                let loot = corpse.loot + (objectEffects.buryBonus || 0);
-                objectEffects.buryBonus = 0;
-                addPlayerCash(loot);
-                logMessage("玩家", `（大主教技能）将 ${corpse.name} 的尸体自动埋入别馆 ${targetSlot.card.annexName} 下，掠夺 ${loot}F！`, "player");
-                playEffect('bury', `+${loot}F`, document.getElementById('player-annexes'));
+                awardBuryLoot(corpse, targetSlot.card.annexName, true);
             });
         }
     }
@@ -1521,7 +1513,12 @@ function aiExecuteAction() {
     else if (action === 'check') {
         ai.checks += 1;
         logMessage("AI", "邪恶叔叔直接获得了一张 10F 支票。", "ai");
-    } 
+        let notaryCount = player.annexes.filter(a => a.card.annexName.includes("书房")).length;
+        if (notaryCount > 0) {
+            addPlayerCash(notaryCount);
+            logMessage("玩家", `[书房] 对手兑换支票，你顺势获得 ${notaryCount}F。`, "player");
+        }
+    }
     else if (action === 'peasant_bribe') {
         let peasantsInBribe = ai.bribePile.filter(c => c.role === 'peasant');
         if (peasantsInBribe.length >= 2) {
@@ -1602,9 +1599,18 @@ function morningStepPolice() {
     if (policeInRooms) {
         logMessage("警察", "🚓 警察在大堂展开调查！发现未掩埋的尸体...", "police");
         playEffect('police');
-        
+
+        // 名流[法庭/法官]：调查时先获得 2F
+        let judgeCount = player.annexes.filter(a => a.card.annexName.includes("法庭")).length;
+        if (judgeCount > 0) {
+            addPlayerCash(2 * judgeCount);
+            logMessage("玩家", `[法庭] 警察调查时你先获得 ${2 * judgeCount}F。`, "player");
+        }
+        // 名流[诊所/医生]：每座诊所让你少处理 1 具未埋尸体（该尸体不被罚款也不被带走）
+        let doctorCount = player.annexes.filter(a => a.card.annexName.includes("诊所")).length;
+
         if (player.corpses.length > 0) {
-            let protectedCount = Math.min(roundEffects.protectedCorpses || 0, player.corpses.length);
+            let protectedCount = Math.min((roundEffects.protectedCorpses || 0) + doctorCount, player.corpses.length);
             let exposedCount = player.corpses.length - protectedCount;
             let penalty = exposedCount * 10;
             logMessage("警察", `您被搜出 ${exposedCount} 具尸体！需要支付 ${penalty}F 遣散费给掘墓人。`, "warn");
@@ -1675,6 +1681,14 @@ function morningStepRent() {
         }
     });
 
+    // 名流[实验室/外科医生]：退房时若对手仍有未埋尸体，每座实验室获得 3F
+    let labCount = player.annexes.filter(a => a.card.annexName.includes("实验室")).length;
+    if (labCount > 0 && ai.corpses.length > 0) {
+        addPlayerCash(3 * labCount);
+        logMessage("玩家", `[实验室] 退房时对手仍有未埋尸体，你获得 ${3 * labCount}F。`, "player");
+        playEffect('rent', `+${3 * labCount}F`, document.querySelector('.player-wealth-box'));
+    }
+
     if (roundEffects.pickpockets) {
         player.cash = Math.max(0, player.cash - 2);
         ai.cash = Math.max(0, ai.cash - 2);
@@ -1698,7 +1712,14 @@ function morningStepWages() {
         logMessage("事件", "惨败事件：你的帮工四散离去，本轮无需再支付这些工资。", "warn");
         playEffect('wage', '帮工四散', document.querySelector('.player-wealth-box'));
     }
-    
+
+    // 名流[药房/药剂师]：清晨若手牌不少于 3 张，每座药房获得 2F
+    let pharmCount = player.annexes.filter(a => a.card.annexName.includes("药房")).length;
+    if (pharmCount > 0 && player.hand.length >= 3) {
+        addPlayerCash(2 * pharmCount);
+        logMessage("玩家", `[药房] 清晨你手牌不少于 3 张，获得 ${2 * pharmCount}F。`, "player");
+    }
+
     let HandSize = player.hand.length;
     if (HandSize > 0) {
         let distillerCount = player.annexes.filter(a => a.card.annexName.includes("酒厂")).length;
@@ -1798,7 +1819,23 @@ function triggerGameOver() {
         playerTotal += bonus;
         logMessage("玩家", `别馆 [温室] 在局终为你每张支票加成 3F，共获得额外 ${bonus}F 赃款！`, "player");
     }
-    
+
+    // 名流[议事厅/参议员]：局终每张支票额外 2F
+    let senatorCount = player.annexes.filter(a => a.card.annexName.includes("议事厅")).length;
+    if (senatorCount > 0) {
+        let bonus = player.checks * 2 * senatorCount;
+        playerTotal += bonus;
+        logMessage("玩家", `别馆 [议事厅] 局终为你每张支票额外加成 2F，共 ${bonus}F！`, "player");
+    }
+    // 名流[画廊/收藏家]：局终每有一种颜色的别馆获得 2F
+    let galleryCount = player.annexes.filter(a => a.card.annexName.includes("画廊")).length;
+    if (galleryCount > 0) {
+        let distinctColors = new Set(player.annexes.map(a => a.card.color)).size;
+        let bonus = distinctColors * 2 * galleryCount;
+        playerTotal += bonus;
+        logMessage("玩家", `别馆 [画廊] 局终：你拥有 ${distinctColors} 种颜色的别馆，获得额外 ${bonus}F！`, "player");
+    }
+
     let colorCounts = { 'artisan-red': 0, 'merchant-blue': 0, 'religious-purple': 0, 'noble-green': 0 };
     exitStack.forEach(c => {
         if (colorCounts[c.color] !== undefined) colorCounts[c.color]++;
@@ -1909,7 +1946,34 @@ function addPlayerCash(amount) {
 }
 
 function addAICash(amount) {
-    ai.cash = Math.min(40, ai.cash + amount);
+    // 名流[保险库/银行家]：对手现金溢出 40F 上限的部分归你
+    let hasBanker = player.annexes.some(a => a.card.annexName.includes("保险库"));
+    let room = 40 - ai.cash;
+    let gained = Math.max(0, Math.min(amount, room));
+    ai.cash += gained;
+    let overflow = amount - gained;
+    if (hasBanker && overflow > 0) {
+        addPlayerCash(overflow);
+        logMessage("玩家", `[保险库] 截获了对手溢出 40F 上限的 ${overflow}F！`, "player");
+    }
+}
+
+// 埋尸掠夺结算（含金牙加成与大胡子女士的平分特殊埋葬）
+function awardBuryLoot(corpse, annexName, autoBishop) {
+    let loot = corpse.loot + (objectEffects.buryBonus || 0);
+    objectEffects.buryBonus = 0;
+    let prefix = autoBishop ? '（大主教技能）' : '';
+    if (corpse.specialBurial === 'bearded') {
+        let mine = Math.ceil(loot / 2);
+        let theirs = loot - mine;
+        addPlayerCash(mine);
+        ai.cash = Math.min(40, ai.cash + theirs);
+        logMessage("玩家", `${prefix}大胡子女士被埋入 ${annexName}，与对手平分油水：你得 ${mine}F，叔叔得 ${theirs}F。`, "player");
+    } else {
+        addPlayerCash(loot);
+        logMessage("玩家", `${prefix}将 ${corpse.name} 的尸体埋入 ${annexName} 下，掠夺 ${loot}F！`, "player");
+    }
+    playEffect('bury', `+${loot}F`, document.getElementById('player-annexes'));
 }
 
 function deductPlayerTotal(amount) {
@@ -2263,8 +2327,8 @@ function playObject(instanceId) {
     } else if (obj.effect === 'hide_corpse') {
         roundEffects.protectedCorpses += 1;
     } else if (obj.effect === 'coffee') {
-        addPlayerCash(1);
-        roundEffects.playerExtraRent += 1;
+        addPlayerCash(2);
+        logMessage("道具", "[咖啡] 立刻获得 2F。", "player");
     } else if (obj.effect === 'return_build') {
         objectEffects.returnHelpersFor.build = true;
     } else if (obj.effect === 'return_bribe') {
@@ -2274,19 +2338,28 @@ function playObject(instanceId) {
     } else if (obj.effect === 'return_bury') {
         objectEffects.returnHelpersFor.bury = true;
     } else if (obj.effect === 'catchup') {
-        if (player.cash + player.checks * 10 < ai.cash + ai.checks * 10) addPlayerCash(3);
+        let playerBuried = player.annexes.reduce((s, a) => s + a.buried.length, 0);
+        let aiBuried = ai.killPile.length;
+        if (playerBuried < aiBuried) {
+            addPlayerCash(6);
+            logMessage("道具", "[告解室] 你埋的尸体比对手少，立刻获得 6F。", "player");
+        } else {
+            logMessage("道具", "[告解室] 你埋的尸体不比对手少，本次没有收益。", "player");
+        }
     } else if (obj.effect === 'remove_corpse') {
         let corpse = player.corpses.shift();
         if (corpse) removedStack.push(corpse);
     } else if (obj.effect === 'poison') {
         let targets = rooms.filter(r => isOpenRoom(r) && r.occupant);
-        targets.sort((a, b) => getCardRank(a.occupant, 'kill') - getCardRank(b.occupant, 'kill'));
+        targets.sort((a, b) => (b.occupant.loot || 0) - (a.occupant.loot || 0));
         if (targets[0]) {
             let victim = targets[0].occupant;
             targets[0].occupant = null;
             victim.isDead = true;
             player.corpses.push(victim);
-            logMessage("道具", `[毒药] 让 ${victim.name} 悄悄变成了未埋尸体。`, "warn");
+            logMessage("道具", `[毒药] 毒杀了油水最高的 ${victim.name}（${victim.loot}F），尸体归你。`, "warn");
+        } else {
+            logMessage("道具", "[毒药] 旅馆里没有可下毒的旅客。", "player");
         }
     } else if (obj.effect === 'bury_discount') {
         objectEffects.buryDiscount += 1;
