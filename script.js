@@ -92,11 +92,16 @@ const BASE_TRAVELERS = [
     { name: "警长 (Police Chief)", role: "police", color: "police-grey", rank: 2, loot: 1, annexName: "", annexDesc: "警察无法成为别馆。清晨留在房内触发调查。", aptitude: "kill" },
     { name: "警长 (Police Chief)", role: "police", color: "police-grey", rank: 2, loot: 1, annexName: "", annexDesc: "警察无法成为别馆。清晨留在房内触发调查。", aptitude: "kill" },
     { name: "警长 (Police Chief)", role: "police", color: "police-grey", rank: 2, loot: 1, annexName: "", annexDesc: "警察无法成为别馆。清晨留在房内触发调查。", aptitude: "kill" },
-    { name: "警长 (Police Chief)", role: "police", color: "police-grey", rank: 2, loot: 1, annexName: "", annexDesc: "警察无法成为别馆。清晨留在房内触发调查。", aptitude: "kill" },
-    
+
+    { name: "督察 (Inspector)", role: "police", color: "police-grey", rank: 3, loot: 1, annexName: "", annexDesc: "警察无法成为别馆。清晨留在房内触发调查。", aptitude: "kill" },
     { name: "督察 (Inspector)", role: "police", color: "police-grey", rank: 3, loot: 1, annexName: "", annexDesc: "警察无法成为别馆。清晨留在房内触发调查。", aptitude: "kill" },
     { name: "督察 (Inspector)", role: "police", color: "police-grey", rank: 3, loot: 1, annexName: "", annexDesc: "警察无法成为别馆。清晨留在房内触发调查。", aptitude: "kill" }
 ];
+
+// 基础旅客「身上油水」按等级统一（经中文PNP卡面逐张核对）：0级=8 / 1级=12 / 2级=18 / 3级=26。
+// 注意：贵族卡面上的 +4/+6/+9/+18 是「建造别馆时立即获得的现金」，并非身上油水，二者相互独立。
+const BASE_RANK_LOOT = { 0: 8, 1: 12, 2: 18, 3: 26 };
+BASE_TRAVELERS.forEach(c => { if (BASE_RANK_LOOT[c.rank] !== undefined) c.loot = BASE_RANK_LOOT[c.rank]; });
 
 // ==========================================
 // 扩展模块数据：嘉年华员工、名流、事件、道具
@@ -386,7 +391,7 @@ function startGame() {
             role: "peasant",
             color: "peasant-yellow",
             rank: 0,
-            loot: 1,
+            loot: 4,
             annexName: "",
             annexDesc: "农民无法成为别馆。打出后直接返回小酒馆。",
             aptitude: "none"
