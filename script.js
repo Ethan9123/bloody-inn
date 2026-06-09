@@ -353,6 +353,8 @@ function setDifficulty(diff) {
     document.getElementById('btn-diff-murderous').classList.toggle('active', diff === 'murderous');
     let mm = document.getElementById('btn-diff-mastermind');
     if (mm) mm.classList.toggle('active', diff === 'mastermind');
+    let ml = document.getElementById('btn-diff-ml');
+    if (ml) ml.classList.toggle('active', diff === 'ml');
 }
 
 function setLang(l) {
@@ -482,6 +484,7 @@ function startGame() {
     if (difficulty === 'scheming') diffName = '阴险叔叔 (+拉拢分)';
     if (difficulty === 'murderous') diffName = '嗜血叔叔 (+刺杀积分)';
     if (difficulty === 'mastermind') diffName = '策略叔叔 (真人级)';
+    if (difficulty === 'ml') diffName = '学习叔叔 (ML调优)';
     document.getElementById('info-difficulty').innerText = diffName;
     let enabledModules = [];
     if (expansionOptions.carnies) enabledModules.push('嘉年华员工');
@@ -1609,6 +1612,16 @@ const AI_PROFILES = {
     scheming:   { kill: 0.9,  bribe: 1.2, room: 0.9, service: 0.9, deny: 0.7, launderAt: 34 },
     murderous:  { kill: 1.3,  bribe: 0.5, room: 0.7, service: 0.7, deny: 0.9, launderAt: 34 },
     mastermind: { kill: 1.15, bribe: 1.0, room: 1.0, service: 1.0, deny: 1.0, launderAt: 32 },
+    // 学习叔叔：由 ml/optimize_ai.js 自我对弈 + 进化策略(ES) 学到的权重（含各自的阶段调节）。
+    // 取自适应度可信的候选(约 68% 对基线胜率)；高于此的候选被判为过拟合模拟器而舍弃。
+    ml: {
+        kill: 1.40, bribe: 0.95, room: 0.60, service: 0.85, deny: 1.50, launderAt: 28,
+        phase: {
+            early: { kill: 0.40, room: 1.60, service: 1.40 },
+            mid:   { kill: 1.25, room: 0.70, service: 1.30 },
+            late:  { kill: 1.80, room: 0.30, service: 0.05 },
+        },
+    },
 };
 const PHASE_MOD = {
     early: { kill: 0.75, room: 1.8,  service: 1.7 },
@@ -1618,7 +1631,7 @@ const PHASE_MOD = {
 
 function aiStrategicAction() {
     let prof = AI_PROFILES[difficulty] || AI_PROFILES.mastermind;
-    let pm = PHASE_MOD[getRoundPhase()];
+    let pm = (prof.phase && prof.phase[getRoundPhase()]) || PHASE_MOD[getRoundPhase()];
     let occupied = rooms.filter(r => isOpenRoom(r) && r.occupant);
     let neutralRoom = rooms.find(r => r.key === 'neutral');
     let myOpenRooms = rooms.filter(r => isOpenRoom(r) && r.key === 'ai');
@@ -2164,7 +2177,7 @@ function triggerGameOver() {
     document.getElementById('score-ai-cash').innerText = `${ai.cash} F`;
     document.getElementById('score-ai-checks').innerText = `${ai.checks * 10} F`;
     
-    if (difficulty === 'silly' || difficulty === 'mastermind') {
+    if (difficulty === 'silly' || difficulty === 'mastermind' || difficulty === 'ml') {
         document.getElementById('score-player-bribe-bonus').innerText = "--";
         document.getElementById('score-ai-bribe-bonus').innerText = "--";
         document.getElementById('score-player-kill-bonus').innerText = "--";
