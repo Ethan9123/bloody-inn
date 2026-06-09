@@ -102,29 +102,32 @@ const BASE_TRAVELERS = [
 // 扩展模块数据：嘉年华员工、名流、事件、道具
 // ==========================================
 const CARNIE_TRAVELERS = [
-    { name: "喷火艺人 (Fire Eater)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 1, loot: 2, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：迎客时若拖车下没有尸体，也必须安排旅客入住。", aptitude: "kill", isTrailer: true },
-    { name: "骗子 (Con Artist)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 1, loot: 3, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：可像别馆一样埋尸，清晨有旅客时收 1F。", aptitude: "bribe", isTrailer: true },
-    { name: "杂耍艺人 (Juggler)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 1, loot: 2, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：迎客时也要入住旅客。", aptitude: "build", isTrailer: true },
-    { name: "小丑 (Clown)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 1, loot: 2, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：可作为额外入住位。", aptitude: "bury", isTrailer: true },
-    { name: "马戏叫卖人 (Barker)", role: "carnie", color: "carnie-orange", rank: 0, buildRank: 1, loot: 2, annexName: "嘉年华摊位 (Carnival Booth)", annexDesc: "建造时立刻获得 2F。若本轮有嘉年华旅客，额外获得 1F。", aptitude: "bribe" },
-    { name: "驯熊师 (Bear Tamer)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 3, loot: 4, annexName: "熊笼 (Bear Cage)", annexDesc: "被动：执行刺杀行动时少支付一张帮工牌。", aptitude: "kill" },
-    { name: "伴游 (Companion)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 2, loot: 3, annexName: "密室 (Nook)", annexDesc: "被动：执行拉拢行动时，打出的帮工全部返回手牌。", aptitude: "bribe" },
-    { name: "飞刀手 (Knife Thrower)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 1, loot: 4, annexName: "刀靶 (Target Stand)", annexDesc: "建造时，你可以立刻对一名等级0旅客执行一次免费刺杀。", aptitude: "kill" },
-    { name: "占卜师 (Fortune Teller)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 2, loot: 3, annexName: "占卜帐篷 (Fortune Tent)", annexDesc: "建造时查看旅客牌堆顶 3 张并重新排序。", aptitude: "bury" },
-    { name: "大力士 (Strongman)", role: "carnie", color: "carnie-orange", rank: 3, buildRank: 2, loot: 6, annexName: "铁锤游戏 (Hammer Game)", annexDesc: "建造时获得 4F。", aptitude: "build" },
-    { name: "空中飞人 (Acrobat)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 0, loot: 3, annexName: "高台 (High Wire)", annexDesc: "建造时获得 1F，并可把一名小酒馆农民加入手牌。", aptitude: "build" },
-    { name: "侏儒 (Dwarf)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 2, loot: 5, annexName: "小舞台 (Tiny Stage)", annexDesc: "特殊埋葬：埋入别馆时不占用容量。", aptitude: "bury", specialBurial: "dwarf" },
-    { name: "大胡子女士 (Bearded Lady)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 1, loot: 8, annexName: "梳妆间 (Dressing Room)", annexDesc: "特殊埋葬：埋葬她时油水须与对手（叔叔）平分——你只得一半(向上取整)，另一半归对手。", aptitude: "bribe", specialBurial: "bearded" },
-    { name: "双胞胎 (Twins)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 3, loot: 7, annexName: "双人房 (Twin Room)", annexDesc: "特殊埋葬：结算平局时按 2 具尸体计。", aptitude: "bury", specialBurial: "twins" }
+    // 数字(等级/建埋等级/油水)经嘉年华扩展中文PNP卡面逐张核对
+    { name: "喷火艺人 (Fire Eater)", role: "carnie", color: "carnie-orange", rank: 0, buildRank: 2, loot: 14, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：迎客时若拖车下没有尸体，也必须安排旅客入住。", aptitude: "kill", isTrailer: true },
+    { name: "骗子 (Con Artist)", role: "carnie", color: "carnie-orange", rank: 0, buildRank: 1, loot: 14, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：可像别馆一样埋尸，清晨有旅客时收 1F。", aptitude: "bribe", isTrailer: true },
+    { name: "杂耍艺人 (Juggler)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 2, loot: 14, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：迎客时也要入住旅客。", aptitude: "build", isTrailer: true },
+    { name: "小丑 (Clown)", role: "carnie", color: "carnie-orange", rank: 0, buildRank: 2, loot: 14, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：可作为额外入住位。", aptitude: "bury", isTrailer: true },
+    { name: "马戏叫卖人 (Barker)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 3, loot: 20, annexName: "嘉年华摊位 (Carnival Booth)", annexDesc: "建成后：此后每当一名嘉年华旅客入住旅馆，你便获得 3F。", aptitude: "bribe" },
+    { name: "驯熊师 (Bear Tamer)", role: "carnie", color: "carnie-orange", rank: 3, buildRank: 1, loot: 20, annexName: "熊笼 (Bear Cage)", annexDesc: "被动：此后执行刺杀行动时少支付一张帮工牌。", aptitude: "kill" },
+    { name: "伴游 (Companion)", role: "carnie", color: "carnie-orange", rank: 3, buildRank: 1, loot: 20, annexName: "密室 (Nook)", annexDesc: "被动：执行拉拢行动时，打出的帮工全部返回手牌。", aptitude: "bribe" },
+    { name: "飞刀手 (Knife Thrower)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 0, loot: 10, annexName: "刀靶 (Target Stand)", annexDesc: "建造时，你可以立刻对一名等级0旅客执行一次免费刺杀。", aptitude: "kill" },
+    { name: "占卜师 (Fortune Teller)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 1, loot: 10, annexName: "占卜帐篷 (Fortune Tent)", annexDesc: "建造时查看旅客牌堆顶 3 张并重新排序。", aptitude: "bury" },
+    { name: "大力士 (Strongman)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 0, loot: 10, annexName: "铁锤游戏 (Hammer Game)", annexDesc: "建造时获得 4F。", aptitude: "build" },
+    { name: "空中飞人 (Acrobat)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 0, loot: 10, annexName: "高台 (High Wire)", annexDesc: "建造时获得 1F，并可把一名小酒馆农民加入手牌。", aptitude: "build" },
+    { name: "侏儒 (Dwarf)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 1, loot: 16, annexName: "小舞台 (Tiny Stage)", annexDesc: "特殊埋葬：埋入别馆时不占用容量。", aptitude: "bury", specialBurial: "dwarf" },
+    { name: "大胡子女士 (Bearded Lady)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 1, loot: 24, annexName: "梳妆间 (Dressing Room)", annexDesc: "特殊埋葬：埋葬她时油水须与对手（叔叔）平分——你只得一半(向上取整)，另一半归对手。", aptitude: "bribe", specialBurial: "bearded" },
+    { name: "双胞胎 (Twins)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 1, loot: 24, annexName: "双人房 (Twin Room)", annexDesc: "特殊埋葬：结算平局时按 2 具尸体计。", aptitude: "bury", specialBurial: "twins" }
 ];
 
 const NOTABLE_TRAVELERS = [
-    { name: "养蚕人 (Sericulturist)", role: "notable", color: "notable-gold", rank: 1, buildRank: 2, loot: 5, annexName: "丝绸农场 (Silk Farm)", annexDesc: "建造时，你每有一间住着旅客的自家客房，获得 3F。", aptitude: "none" },
-    { name: "酿酒庄主 (Winemaker)", role: "notable", color: "notable-gold", rank: 1, buildRank: 2, loot: 5, annexName: "酒桶 (Wine Cask)", annexDesc: "建造时，每有一间住着旅客的中立客房，获得 3F。", aptitude: "none" },
-    { name: "外科医生 (Surgeon)", role: "notable", color: "notable-gold", rank: 1, buildRank: 2, loot: 9, annexName: "实验室 (Laboratory)", annexDesc: "清晨退房时，若对手有未埋尸体，你获得 3F。", aptitude: "none" },
-    { name: "银行家 (Banker)", role: "notable", color: "notable-gold", rank: 2, buildRank: 3, loot: 12, annexName: "保险库 (Safe)", annexDesc: "被动：对手获得超过40F上限的现金时，溢出部分归你。", aptitude: "none" },
-    { name: "公证人 (Notary)", role: "notable", color: "notable-gold", rank: 2, buildRank: 1, loot: 6, annexName: "书房 (Study)", annexDesc: "对手洗钱时，你获得 1F。", aptitude: "none" },
-    { name: "药剂师 (Pharmacist)", role: "notable", color: "notable-gold", rank: 2, buildRank: 2, loot: 8, annexName: "药房 (Pharmacy)", annexDesc: "清晨若你手牌至少 3 张，获得 2F。", aptitude: "none" },
+    // 以下 6 张为正版扩展名流，数字经中文PNP卡面逐张核对
+    { name: "养蚕人 (Sericulturist)", role: "notable", color: "notable-gold", rank: 0, buildRank: 0, loot: 10, annexName: "丝绸农场 (Silk Farm)", annexDesc: "建造时，你每有一间住着旅客的自家客房，获得 3F。", aptitude: "none" },
+    { name: "酿酒庄主 (Winemaker)", role: "notable", color: "notable-gold", rank: 2, buildRank: 0, loot: 14, annexName: "酒桶 (Wine Cask)", annexDesc: "建造时，每有一间住着旅客的中立客房，获得 3F。", aptitude: "none" },
+    { name: "外科医生 (Surgeon)", role: "notable", color: "notable-gold", rank: 1, buildRank: 2, loot: 16, annexName: "实验室 (Laboratory)", annexDesc: "清晨退房时，若对手有未埋尸体，你获得 3F。", aptitude: "none" },
+    { name: "银行家 (Banker)", role: "notable", color: "notable-gold", rank: 1, buildRank: 3, loot: 20, annexName: "保险库 (Safe)", annexDesc: "被动：对手获得超过40F上限的现金时，溢出部分归你。", aptitude: "none" },
+    { name: "公证人 (Notary)", role: "notable", color: "notable-gold", rank: 3, buildRank: 1, loot: 20, annexName: "书房 (Study)", annexDesc: "对手洗钱/兑票时，你获得 1F。", aptitude: "none" },
+    { name: "药剂师 (Pharmacist)", role: "notable", color: "notable-gold", rank: 1, buildRank: 3, loot: 20, annexName: "药房 (Pharmacy)", annexDesc: "清晨若你手牌至少 3 张，获得 2F。", aptitude: "none" },
+    // 以下 8 张为本数字版自制名流（该中文PNP未收录其余名流），用于补足 14 张以替换贵族；效果均已实装
     { name: "律师 (Lawyer)", role: "notable", color: "notable-gold", rank: 0, buildRank: 1, loot: 4, annexName: "档案室 (Archive)", annexDesc: "建造时获得 4F。", aptitude: "none" },
     { name: "医生 (Doctor)", role: "notable", color: "notable-gold", rank: 1, buildRank: 1, loot: 6, annexName: "诊所 (Clinic)", annexDesc: "警察调查时，你可以少处理 1 具未埋尸体。", aptitude: "none" },
     { name: "收藏家 (Collector)", role: "notable", color: "notable-gold", rank: 2, buildRank: 3, loot: 10, annexName: "画廊 (Gallery)", annexDesc: "游戏结束时，每有一种颜色别馆获得 2F。", aptitude: "none" },
@@ -570,6 +573,7 @@ function handleWelcomeRoomSelect(roomId) {
     room.occupant = pendingWelcomeCard;
     logMessage("玩家", `${pendingWelcomeCard.name} (等级 ${pendingWelcomeCard.rank}) 入住了 ${room.id} 号房。`, "player");
     maybeRevealCarnieEvent(pendingWelcomeCard);
+    triggerBarkerBonus(room.occupant);
     playEffect('checkin', `${room.id}号房`, document.getElementById('room-' + room.id));
     pendingWelcomeCard = null;
     triggerRoomServiceImmediate(room);
@@ -626,6 +630,7 @@ function aiWelcomeGuests() {
             logMessage("AI", `${card.name}（等级 ${rank}）被安排在 ${room.id} 号中立客房入住。`, "ai");
         }
         maybeRevealCarnieEvent(card);
+        triggerBarkerBonus(card);
         triggerRoomServiceImmediate(room);
         renderUI();
         playEffect('checkin', `${room.id}号房`, document.getElementById('room-' + room.id));
@@ -699,6 +704,16 @@ function resolveCarnieEvent() {
 
     eventDiscard.push(currentEvent);
     currentEvent = null;
+}
+
+// 嘉年华摊位/叫卖人：每当一名嘉年华旅客入住，拥有摊位的玩家获得 3F
+function triggerBarkerBonus(card) {
+    if (!card || card.role !== 'carnie') return;
+    let boothCount = player.annexes.filter(a => a.card.annexName.includes("嘉年华摊位")).length;
+    if (boothCount > 0) {
+        addPlayerCash(3 * boothCount);
+        logMessage("玩家", `[嘉年华摊位] 一名嘉年华旅客入住，你获得 ${3 * boothCount}F。`, "player");
+    }
 }
 
 function triggerRoomServiceImmediate(room) {
@@ -1073,9 +1088,7 @@ function triggerAnnexImmediateEffect(card) {
     }
 
     if (card.annexName.includes("嘉年华摊位")) {
-        let bonus = 2 + (currentEvent || carnieEventRevealedThisRound ? 1 : 0);
-        addPlayerCash(bonus);
-        logMessage("玩家", `嘉年华摊位开张，获得 ${bonus}F。`, "player");
+        logMessage("玩家", "嘉年华摊位开张：此后每当有嘉年华旅客入住旅馆，你将获得 3F。", "player");
     } else if (card.annexName.includes("占卜帐篷")) {
         let peek = travelerDeck.slice(-3).map(c => c.name).reverse().join("、") || "牌堆不足";
         logMessage("玩家", `占卜帐篷查看牌堆顶：${peek}。`, "player");
