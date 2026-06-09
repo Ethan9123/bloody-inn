@@ -1595,6 +1595,130 @@ body {
 .wf-traveler .card-emblem { right: -10px; bottom: -10px; width: 70px; height: 70px; }
 
 /* ==========================================================================
+   新手教程
+   ========================================================================== */
+.setup-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.setup-actions .btn { flex: 1; min-width: 160px; }
+
+.tutorial-content {
+    max-width: 560px;
+    width: min(560px, 92vw);
+    text-align: left;
+}
+.tutorial-step-label {
+    font-size: 12px;
+    color: #ffca28;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+#tutorial-title {
+    margin: 0 0 12px;
+    font-size: 22px;
+}
+.tutorial-body {
+    min-height: 200px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #cfd8dc;
+}
+.tutorial-body p { margin: 0 0 10px; }
+.tutorial-body strong { color: #fff; }
+.tut-list { list-style: none; padding: 0; margin: 0 0 10px; }
+.tut-list li {
+    padding: 7px 10px;
+    margin-bottom: 6px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border-left: 3px solid rgba(255, 202, 40, 0.5);
+}
+.tut-tip {
+    margin-top: 12px !important;
+    padding: 9px 12px;
+    border-radius: 6px;
+    background: rgba(255, 202, 40, 0.1);
+    border: 1px solid rgba(255, 202, 40, 0.25);
+    font-size: 13px;
+    color: #ffe082;
+}
+.tut-chip {
+    display: inline-block;
+    width: 26px; text-align: center;
+    border-radius: 4px;
+    color: #fff; font-weight: 700;
+    margin-right: 4px;
+    padding: 1px 0;
+}
+.tut-chip.red { background: var(--color-artisan); }
+.tut-chip.blue { background: var(--color-merchant); }
+.tut-chip.purple { background: var(--color-religious); }
+.tut-chip.green { background: var(--color-noble); }
+.tut-chip.grey { background: var(--color-police); }
+.tut-chip.yellow { background: var(--color-peasant); }
+
+.tutorial-dots {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 14px 0;
+}
+.tut-dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.22);
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+}
+.tut-dot.on { background: #ffca28; transform: scale(1.25); }
+
+.tutorial-nav {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+.tutorial-nav .btn { flex: 1; }
+.tutorial-nav .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* 过场横幅（开局 / 季度 / 新一轮） */
+.fx-banner {
+    position: fixed;
+    left: 50%;
+    top: 38%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+    z-index: 3200;
+    animation: fx-banner 1.9s ease forwards;
+}
+.fx-banner-title {
+    font-family: var(--font-heading);
+    font-weight: 900;
+    font-size: 46px;
+    letter-spacing: 3px;
+    color: #fff;
+    text-shadow: 0 4px 24px rgba(0, 0, 0, 0.8), 0 0 30px rgba(158, 28, 28, 0.6);
+}
+.fx-banner-sub {
+    margin-top: 6px;
+    font-size: 15px;
+    color: #ffca28;
+    letter-spacing: 1px;
+}
+@keyframes fx-banner {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+    15%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    80%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -58%) scale(1.04); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .fx-banner { animation-duration: 0.01ms !important; }
+}
+
+/* ==========================================================================
    动作特效：锚定飘字 / 粒子 / 警笛 / 彩纸 / 房间高亮
    ========================================================================== */
 .effect-burst.anchored {

@@ -111,7 +111,7 @@ const CARNIE_TRAVELERS = [
     { name: "喷火艺人 (Fire Eater)", role: "carnie", color: "carnie-orange", rank: 0, buildRank: 2, loot: 14, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：迎客时若拖车下没有尸体，也必须安排旅客入住。", aptitude: "kill", isTrailer: true },
     { name: "骗子 (Con Artist)", role: "carnie", color: "carnie-orange", rank: 0, buildRank: 1, loot: 14, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：可像别馆一样埋尸，清晨有旅客时收 1F。", aptitude: "bribe", isTrailer: true },
     { name: "杂耍艺人 (Juggler)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 2, loot: 14, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：迎客时也要入住旅客。", aptitude: "build", isTrailer: true },
-    { name: "小丑 (Clown)", role: "carnie", color: "carnie-orange", rank: 0, buildRank: 2, loot: 14, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：可作为额外入住位。", aptitude: "bury", isTrailer: true },
+    { name: "小丑 (Clown)", role: "carnie", color: "carnie-orange", rank: 0, buildRank: 2, loot: 14, annexName: "拖车 (Trailer)", annexDesc: "嘉年华拖车：迎客时若拖车下没有尸体，也必须安排旅客入住。", aptitude: "bury", isTrailer: true },
     { name: "马戏叫卖人 (Barker)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 3, loot: 20, annexName: "嘉年华摊位 (Carnival Booth)", annexDesc: "建成后：此后每当一名嘉年华旅客入住旅馆，你便获得 3F。", aptitude: "bribe" },
     { name: "驯熊师 (Bear Tamer)", role: "carnie", color: "carnie-orange", rank: 3, buildRank: 1, loot: 20, annexName: "熊笼 (Bear Cage)", annexDesc: "被动：此后执行刺杀行动时少支付一张帮工牌。", aptitude: "kill" },
     { name: "伴游 (Companion)", role: "carnie", color: "carnie-orange", rank: 3, buildRank: 1, loot: 20, annexName: "密室 (Nook)", annexDesc: "被动：执行拉拢行动时，打出的帮工全部返回手牌。", aptitude: "bribe" },
@@ -121,7 +121,7 @@ const CARNIE_TRAVELERS = [
     { name: "空中飞人 (Acrobat)", role: "carnie", color: "carnie-orange", rank: 1, buildRank: 0, loot: 10, annexName: "高台 (High Wire)", annexDesc: "建造时获得 1F，并可把一名小酒馆农民加入手牌。", aptitude: "build" },
     { name: "侏儒 (Dwarf)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 1, loot: 16, annexName: "小舞台 (Tiny Stage)", annexDesc: "特殊埋葬：埋入别馆时不占用容量。", aptitude: "bury", specialBurial: "dwarf" },
     { name: "大胡子女士 (Bearded Lady)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 1, loot: 24, annexName: "梳妆间 (Dressing Room)", annexDesc: "特殊埋葬：埋葬她时油水须与对手（叔叔）平分——你只得一半(向上取整)，另一半归对手。", aptitude: "bribe", specialBurial: "bearded" },
-    { name: "双胞胎 (Twins)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 1, loot: 24, annexName: "双人房 (Twin Room)", annexDesc: "特殊埋葬：结算平局时按 2 具尸体计。", aptitude: "bury", specialBurial: "twins" }
+    { name: "双胞胎 (Twins)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 1, loot: 24, annexName: "双人房 (Twin Room)", annexDesc: "特殊埋葬：必须埋在至少有 2 个空位的别馆下，埋葬后计为 2 具尸体（影响平局判定与告解室）。", aptitude: "bury", specialBurial: "twins" }
 ];
 
 const NOTABLE_TRAVELERS = [
@@ -351,6 +351,8 @@ function setDifficulty(diff) {
     document.getElementById('btn-diff-silly').classList.toggle('active', diff === 'silly');
     document.getElementById('btn-diff-scheming').classList.toggle('active', diff === 'scheming');
     document.getElementById('btn-diff-murderous').classList.toggle('active', diff === 'murderous');
+    let mm = document.getElementById('btn-diff-mastermind');
+    if (mm) mm.classList.toggle('active', diff === 'mastermind');
 }
 
 function toggleExpansion(option) {
@@ -477,6 +479,7 @@ function startGame() {
     let diffName = '傻叔叔 (只算支票)';
     if (difficulty === 'scheming') diffName = '阴险叔叔 (+拉拢分)';
     if (difficulty === 'murderous') diffName = '嗜血叔叔 (+刺杀积分)';
+    if (difficulty === 'mastermind') diffName = '策略叔叔 (真人级)';
     document.getElementById('info-difficulty').innerText = diffName;
     let enabledModules = [];
     if (expansionOptions.carnies) enabledModules.push('嘉年华员工');
@@ -488,7 +491,8 @@ function startGame() {
     refreshIcons();
     
     logMessage("系统", "开始了一局新的《血腥旅馆》游戏。夜幕降临...", "system");
-    runPhaseWelcome();
+    showBanner('THE BLOODY INN', '罪恶之夜降临…', 'gamestart');
+    setTimeout(runPhaseWelcome, 900);
 }
 
 // ==========================================
@@ -504,7 +508,8 @@ function runPhaseWelcome() {
     updateHeaderStatus("黄昏迎客", "welcome");
     let hostName = firstPlayer === 'player' ? '玩家' : '邪恶叔叔';
     logMessage("系统", `--- 第 ${roundNum} 轮：黄昏阶段 (迎客入店)，本轮主理人：${hostName} ---`, "system");
-    
+    showBanner(`第 ${roundNum} 轮`, `主理人：${hostName} · ${seasonNum === 1 ? '第一' : '第二'}季度`, 'round');
+
     if (firstPlayer === 'player') {
         logMessage("玩家", "您是第一玩家。每抽到一位旅客后，请选择一间开放且空置的客房。", "player");
         welcomeGuestsSequentially();
@@ -636,6 +641,7 @@ function prepareSecondSeason() {
     logMessage("系统", "第一季度旅客牌堆已空。离店堆重新洗牌，第二季度开始！", "system");
     seasonNum = 2;
     travelerDeck = shuffleCards(exitStack.splice(0));
+    showBanner('第二季度', '离店旅客重新洗入牌堆', 'season');
     return true;
 }
 
@@ -765,7 +771,7 @@ function runActionStep() {
         document.getElementById('action-box-title').innerText = "邪恶叔叔正在执行行动...";
         document.getElementById('action-box-desc').innerText = "等待叔叔翻开他的行动卡片...";
         enableMainActionButtons(false);
-        setTimeout(aiExecuteAction, 1200);
+        setTimeout(difficulty === 'mastermind' ? aiStrategicAction : aiExecuteAction, 1200);
     }
 }
 
@@ -1010,22 +1016,27 @@ function finishPlayerAction() {
             let corpse = pendingAction.target.corpse;
             let cIdx = player.corpses.findIndex(c => c.id === corpse.id);
             if (cIdx !== -1) player.corpses.splice(cIdx, 1);
-            targetSlot.buried.push(corpse);
+            tuckCorpse(targetSlot, corpse);
             awardBuryLoot(corpse, targetSlot.card.annexName, false);
         } else {
             targets.forEach(corpse => {
+                let needed = corpse.specialBurial === 'twins' ? 2 : 1;
                 let targetSlot = null;
                 for (let idx = 0; idx < player.annexes.length; idx++) {
                     let annex = player.annexes[idx];
                     let maxBurial = getAnnexCapacity(annex.card);
-                    if (annex.buried.length < maxBurial) {
+                    if (annex.buried.length + needed <= maxBurial) {
                         targetSlot = annex;
                         break;
                     }
                 }
+                if (!targetSlot) {
+                    logMessage("系统", `没有足够容量埋葬 ${corpse.name}。`, "warn");
+                    return;
+                }
                 let cIdx = player.corpses.findIndex(c => c.id === corpse.id);
                 if (cIdx !== -1) player.corpses.splice(cIdx, 1);
-                targetSlot.buried.push(corpse);
+                tuckCorpse(targetSlot, corpse);
                 awardBuryLoot(corpse, targetSlot.card.annexName, true);
             });
         }
@@ -1325,13 +1336,14 @@ function handleAnnexSlotSelect(index) {
 
     let targetSlot = player.annexes[index];
     if (!targetSlot) return;
+    let corpse = pendingAction.targetCorpse;
     let maxBurial = getAnnexCapacity(targetSlot.card);
-    if (targetSlot.buried.length >= maxBurial) {
-        logMessage("系统", "这个别馆已经没有空余埋尸容量。", "warn");
+    let needed = corpse.specialBurial === 'twins' ? 2 : 1; // 双胞胎占 2 个埋尸位、计 2 具尸体
+    if (targetSlot.buried.length + needed > maxBurial) {
+        logMessage("系统", needed === 2 ? "双胞胎必须埋在至少有 2 个空位的别馆下。" : "这个别馆已经没有空余埋尸容量。", "warn");
         return;
     }
-    
-    let corpse = pendingAction.targetCorpse;
+
     pendingAction.targets = [corpse];
     pendingAction.target = {
         corpse: corpse,
@@ -1474,6 +1486,7 @@ function adjustLaunder(type) {
 function confirmLaunder() {
     document.getElementById('launder-modal').classList.add('hidden');
     logMessage("玩家", "洗钱结束，本回合 Pass 并结束行动。", "player");
+    playEffect('launder', '', document.querySelector('.player-wealth-box'));
     resetPendingAction();
     advanceTurn();
 }
@@ -1481,6 +1494,88 @@ function confirmLaunder() {
 // ==========================================
 // 邪恶叔叔 AI 行动核心逻辑
 // ==========================================
+// ==========================================
+// 策略叔叔（真人级）：审时度势地选择行动，而非翻固定行动卡
+// ==========================================
+function aiThink(text) {
+    const el = document.getElementById('ai-drawn-card');
+    if (el) el.innerText = '策略决策';
+    logMessage("AI", text, "ai");
+}
+
+function aiStrategicAction() {
+    let occupied = rooms.filter(r => isOpenRoom(r) && r.occupant);
+    let neutralRoom = rooms.find(r => r.key === 'neutral');
+    let myOpenRooms = rooms.filter(r => isOpenRoom(r) && r.key === 'ai');
+    let unservicedMine = myOpenRooms.find(r => !roomHasService(r));
+
+    // 为每个可选行动估一个收益分，再挑最高的执行
+    let plans = [];
+
+    if (occupied.length > 0) {
+        // A) 刺杀并洗劫：油水越高越值得，住在你房里的额外加权（断你财路）
+        let killTarget = occupied.slice().sort((a, b) =>
+            (b.occupant.loot + (b.key === 'player' ? 6 : 0)) - (a.occupant.loot + (a.key === 'player' ? 6 : 0))
+        )[0];
+        plans.push({ type: 'kill', room: killTarget, score: killTarget.occupant.loot + (killTarget.key === 'player' ? 6 : 0) });
+
+        // B) 拉拢：拆你的台、攒拉拢堆，偏好高等级、你房间、非农民
+        let bribeTarget = occupied.slice().sort((a, b) =>
+            (getCardRank(b.occupant, 'bribe') * 2 + (b.key === 'player' ? 4 : 0) + (b.occupant.role === 'peasant' ? -3 : 0)) -
+            (getCardRank(a.occupant, 'bribe') * 2 + (a.key === 'player' ? 4 : 0) + (a.occupant.role === 'peasant' ? -3 : 0))
+        )[0];
+        plans.push({ type: 'bribe', room: bribeTarget, score: getCardRank(bribeTarget.occupant, 'bribe') * 2 + (bribeTarget.key === 'player' ? 4 : 0) });
+    }
+    // C) 扩张地盘：早期、还有中立房、自己房间不算多时
+    if (neutralRoom && ai.keys.length < 4 && roundNum <= 4) plans.push({ type: 'room', score: 6 });
+    // D) 布置客房服务：有自家空房没服务时的长期收入
+    if (unservicedMine) plans.push({ type: 'room_service', score: 4 });
+    // E) 兜底：洗钱攒支票
+    plans.push({ type: 'check', score: 5 });
+    // F) 现金接近 40F 上限就先洗钱存票，避免溢出浪费（像真人一样落袋为安）
+    if (ai.cash >= 36) plans.push({ type: 'launder', score: 100 });
+    else if (ai.cash >= 28) plans.push({ type: 'launder', score: 8 });
+
+    plans.sort((a, b) => b.score - a.score);
+    let plan = plans[0];
+
+    if (plan.type === 'kill') {
+        let victim = plan.room.occupant;
+        plan.room.occupant = null;
+        victim.isDead = true;
+        ai.killPile.push(victim);
+        addAICash(victim.loot);
+        let denial = plan.room.key === 'player' ? '，顺手断了你的房租财路！' : '。';
+        aiThink(`邪恶叔叔盯上了 ${plan.room.id} 号房油水丰厚的 ${victim.name}，一刀放倒、搜走 ${victim.loot}F${denial}`);
+        playEffect('kill', `+${victim.loot}F`, document.getElementById('room-' + plan.room.id));
+        if (ai.bribePile.length > 0) { exitStack.push(ai.bribePile.pop()); }
+    } else if (plan.type === 'bribe') {
+        let t = plan.room.occupant;
+        plan.room.occupant = null;
+        ai.bribePile.push(t);
+        let denial = plan.room.key === 'player' ? '，免得落到你手里。' : '，收为己用。';
+        aiThink(`邪恶叔叔抢先收买了 ${plan.room.id} 号房的 ${t.name}${denial}`);
+        playEffect('bribe', t.name, document.getElementById('room-' + plan.room.id));
+    } else if (plan.type === 'room') {
+        neutralRoom.key = 'ai'; syncAIKeys();
+        aiThink(`旅馆暂时没什么肥羊，邪恶叔叔强占了 ${neutralRoom.id} 号中立客房，扩张地盘等下一拨客人。`);
+    } else if (plan.type === 'room_service') {
+        setRoomService(unservicedMine, 'ai'); syncAIKeys();
+        aiThink(`邪恶叔叔给 ${unservicedMine.id} 号房布置了客房服务，坐收稳定油水。`);
+    } else if (plan.type === 'launder') {
+        ai.cash = Math.max(0, ai.cash - 10);
+        ai.checks += 1;
+        aiThink("现金快到 40F 上限，邪恶叔叔把 10F 洗成支票存好，落袋为安。");
+        playEffect('launder', '', document.querySelector('.ai-wealth-box'));
+    } else {
+        ai.checks += 1;
+        aiThink("没有值得动手的目标，邪恶叔叔不动声色地攒了一张 10F 支票。");
+    }
+
+    renderUI();
+    setTimeout(advanceTurn, 1100);
+}
+
 function aiExecuteAction() {
     if (aiDeck.length === 0) {
         aiDeck = JSON.parse(JSON.stringify(aiDiscard));
@@ -1953,7 +2048,7 @@ function triggerGameOver() {
     document.getElementById('score-ai-cash').innerText = `${ai.cash} F`;
     document.getElementById('score-ai-checks').innerText = `${ai.checks * 10} F`;
     
-    if (difficulty === 'silly') {
+    if (difficulty === 'silly' || difficulty === 'mastermind') {
         document.getElementById('score-player-bribe-bonus').innerText = "--";
         document.getElementById('score-ai-bribe-bonus').innerText = "--";
         document.getElementById('score-player-kill-bonus').innerText = "--";
@@ -2021,6 +2116,14 @@ function addAICash(amount) {
     if (hasBanker && overflow > 0) {
         addPlayerCash(overflow);
         logMessage("玩家", `[保险库] 截获了对手溢出 40F 上限的 ${overflow}F！`, "player");
+    }
+}
+
+// 把尸体塞入别馆下；双胞胎额外塞一张占位，使其占 2 个埋尸位、计为 2 具尸体
+function tuckCorpse(slot, corpse) {
+    slot.buried.push(corpse);
+    if (corpse.specialBurial === 'twins') {
+        slot.buried.push({ name: '双胞胎之二', loot: 0, isTwinPlaceholder: true, color: corpse.color });
     }
 }
 
@@ -2476,6 +2579,102 @@ function toggleHelpModal() {
     refreshIcons();
 }
 
+// ==========================================
+// 新手教程（原创讲解，分步引导）
+// ==========================================
+const TUTORIAL_PAGES = [
+    {
+        title: "🎯 你的目标",
+        body: `<p>你是 1831 年法国乡村一家<strong>黑店</strong>的老板。在游戏的<strong>两个季度</strong>里，把投宿的旅客拉拢、谋杀、埋掉，攒下尽可能多的<strong>法郎(F)</strong>。</p>
+               <p>结算时，<strong>谁的总财富多谁就赢</strong> —— 你要比"邪恶叔叔"AI 更狠、更有钱。</p>
+               <p class="tut-tip">💡 这是一款关于精打细算的"犯罪经营"游戏，每一步都要权衡风险与收益。</p>`
+    },
+    {
+        title: "🌗 一轮分三个阶段",
+        body: `<ul class="tut-list">
+                 <li><strong>① 黄昏·迎客</strong>：本轮"主理人"把入店牌堆顶的旅客逐个安排进客房（牌堆正面朝上，能看到来的是谁）。</li>
+                 <li><strong>② 夜晚·行动</strong>：你和叔叔<strong>各做 2 次行动</strong>（轮流）。这是博弈的核心。</li>
+                 <li><strong>③ 清晨·结算</strong>：警察调查 → 房客退房收租 → 给帮凶发工资。</li>
+               </ul>
+               <p>每轮结束后，<strong>主理人轮换</strong>到另一方。</p>`
+    },
+    {
+        title: "🎨 六大派系（旅客颜色）",
+        body: `<ul class="tut-list">
+                 <li><span class="tut-chip red">红</span> 手工业者 — 擅长<strong>建造别馆</strong></li>
+                 <li><span class="tut-chip blue">蓝</span> 商贾 — 擅长<strong>拉拢帮凶</strong></li>
+                 <li><span class="tut-chip purple">紫</span> 神职 — 擅长<strong>埋葬尸体</strong></li>
+                 <li><span class="tut-chip green">绿</span> 贵族 — 没特长，但<strong>身上油水最多</strong></li>
+                 <li><span class="tut-chip grey">灰</span> 警察 — 擅长<strong>刺杀</strong>，但清晨留在店里会<strong>引来查案</strong></li>
+                 <li><span class="tut-chip yellow">黄</span> 农民 — 等级 0 的<strong>廉价劳力</strong></li>
+               </ul>`
+    },
+    {
+        title: "🎲 五种行动",
+        body: `<p>夜晚每次行动，从下面选<strong>一项</strong>：</p>
+               <ul class="tut-list">
+                 <li><strong>拉拢</strong>：把客房里的旅客收进手牌，当你的"帮凶"。</li>
+                 <li><strong>建造</strong>：把手牌里的旅客翻成"别馆"，享受它的能力。</li>
+                 <li><strong>刺杀</strong>：把旅客就地变成尸体（放在你面前）。</li>
+                 <li><strong>埋尸</strong>：把尸体塞进别馆下，<strong>拿走他身上的油水</strong>。</li>
+                 <li><strong>洗钱/放弃</strong>：现金 ↔ 10F 支票互换。</li>
+               </ul>
+               <p class="tut-tip">💡 前四种行动的<strong>费用 = 目标的等级</strong>：要打出等量的帮凶牌；其中"特长"和本行动匹配的帮凶会<strong>回到手里</strong>，其余被弃掉。农民打出后回小酒馆。</p>`
+    },
+    {
+        title: "💰 怎么赚钱",
+        body: `<ul class="tut-list">
+                 <li><strong>抢劫</strong>：刺杀旅客 → 埋尸拿走他的油水（等级越高越值钱，最高 26F）。</li>
+                 <li><strong>别馆</strong>：建造贵族别馆立刻拿现金；工坊/酒厂/客房服务等提供持续被动。</li>
+                 <li><strong>收租</strong>：清晨你名下客房有住客，每间收 1F。</li>
+                 <li><strong>存钱</strong>：现金上限 <strong>40F</strong>，多余的就洗成 10F 支票存起来（支票不占上限）。</li>
+               </ul>`
+    },
+    {
+        title: "🚓 当心警察！",
+        body: `<p>清晨的<strong>警察调查</strong>是本游戏最大的风险：</p>
+               <p>只要旅馆里<strong>还有警察</strong>，而你名下有<strong>未埋的尸体</strong>，每具就要付掘墓人 <strong>10F</strong>！付不起会被没收全部赃款。</p>
+               <p class="tut-tip">💡 所以：杀人后要尽快<strong>埋尸</strong>，别让尸体在有警察的夜里过夜；或先把警察处理掉。</p>`
+    },
+    {
+        title: "🏆 怎么获胜",
+        body: `<p>两个季度的旅客牌堆都耗尽后，游戏结束。比拼<strong>总财富</strong>：</p>
+               <p style="text-align:center;font-size:15px;color:#ffca28;">现金 + 支票(每张10F) + 别馆终局加成</p>
+               <p>比邪恶叔叔有钱，你就是这片乡野最令人侧目的<strong>黑店之王</strong>！👑</p>
+               <p class="tut-tip">💡 想要最接近真人对手的体验，难度选 <strong>"策略叔叔 (真人级)"</strong> —— 他会抢劫肥羊、专断你的财路。</p>`
+    }
+];
+let tutorialPage = 0;
+
+function openTutorial() {
+    tutorialPage = 0;
+    renderTutorial();
+    document.getElementById('tutorial-modal').classList.remove('hidden');
+}
+function closeTutorial() {
+    document.getElementById('tutorial-modal').classList.add('hidden');
+}
+function tutorialNav(dir) {
+    let next = tutorialPage + dir;
+    if (next < 0) return;
+    if (next >= TUTORIAL_PAGES.length) { closeTutorial(); return; }
+    tutorialPage = next;
+    renderTutorial();
+}
+function renderTutorial() {
+    const p = TUTORIAL_PAGES[tutorialPage];
+    document.getElementById('tutorial-title').innerHTML = p.title;
+    document.getElementById('tutorial-body').innerHTML = p.body;
+    document.getElementById('tutorial-step-label').innerText = `第 ${tutorialPage + 1} / ${TUTORIAL_PAGES.length} 步`;
+    document.getElementById('tutorial-dots').innerHTML =
+        TUTORIAL_PAGES.map((_, i) => `<span class="tut-dot ${i === tutorialPage ? 'on' : ''}" onclick="tutorialPage=${i};renderTutorial();"></span>`).join('');
+    document.getElementById('tutorial-prev').disabled = tutorialPage === 0;
+    document.getElementById('tutorial-next').innerHTML = tutorialPage === TUTORIAL_PAGES.length - 1
+        ? '开始游戏 <i data-lucide="play"></i>'
+        : '下一步 <i data-lucide="chevron-right"></i>';
+    refreshIcons();
+}
+
 function logMessage(sender, text, type = 'system') {
     const logDiv = document.getElementById('game-log');
     let time = new Date().toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -2494,6 +2693,17 @@ function ensureEffectLayer() {
         document.body.appendChild(layer);
     }
     return layer;
+}
+
+// 居中过场横幅（开局 / 季度更替 / 新一轮），带音效
+function showBanner(title, subtitle, soundType) {
+    const layer = ensureEffectLayer();
+    const banner = document.createElement('div');
+    banner.className = 'fx-banner';
+    banner.innerHTML = `<div class="fx-banner-title">${title}</div>${subtitle ? `<div class="fx-banner-sub">${subtitle}</div>` : ''}`;
+    layer.appendChild(banner);
+    if (soundType) playSound(soundType);
+    setTimeout(() => banner.remove(), 1900);
 }
 
 // ==========================================
@@ -2601,6 +2811,22 @@ function playSound(type) {
             case 'lose':
                 [440, 392, 330, 262].forEach((f, i) => _tone(ctx, t + i * 0.14, f, 0.32, { type: 'sawtooth', gain: 0.06 }));
                 break;
+            case 'launder': // 数钱/洗钱：轻快的金属叮叮
+                [988, 1175, 988, 784].forEach((f, i) => _tone(ctx, t + i * 0.05, f, 0.09, { type: 'triangle', gain: 0.05 }));
+                break;
+            case 'gamestart': // 开局：低沉不祥的钟
+                _tone(ctx, t, 130, 0.9, { type: 'sine', gain: 0.09 });
+                _tone(ctx, t + 0.02, 196, 0.9, { type: 'sine', gain: 0.06 });
+                _noise(ctx, t, 0.5, { gain: 0.04, filter: 600 });
+                break;
+            case 'season': // 季度更替：低沉的锣
+                _tone(ctx, t, 110, 1.1, { type: 'sine', gain: 0.1, slideTo: 90 });
+                _tone(ctx, t, 165, 1.1, { type: 'triangle', gain: 0.05 });
+                break;
+            case 'round': // 新一轮：柔和的过场音
+                _tone(ctx, t, 392, 0.18, { type: 'sine', gain: 0.05 });
+                _tone(ctx, t + 0.10, 587, 0.22, { type: 'sine', gain: 0.05 });
+                break;
             default:
                 _tone(ctx, t, 440, 0.1, { gain: 0.06 });
         }
@@ -2684,7 +2910,8 @@ const EFFECT_META = {
     rent:    { label: '收租', icon: '💰' },
     wage:    { label: '付工资', icon: '💸' },
     object:  { label: '道具', icon: '✨' },
-    carnie:  { label: '嘉年华', icon: '🎪' }
+    carnie:  { label: '嘉年华', icon: '🎪' },
+    launder: { label: '洗钱', icon: '🏦' }
 };
 
 function playEffect(type, detail = '', anchorEl = null) {
@@ -2743,6 +2970,9 @@ function playEffect(type, detail = '', anchorEl = null) {
         case 'carnie':
             confettiRain();
             spawnParticles(x, y, { count: 14, glyphs: ['🎪', '🎠', '🎟️'], colors: ['#ffb74d', '#ba68c8', '#4dd0e1'], spread: 100, rise: -80, size: 16 });
+            break;
+        case 'launder':
+            spawnParticles(x, y, { count: 12, glyphs: ['🪙', '🏦', '＄'], colors: ['#ffd54f', '#b0bec5'], spread: 60, rise: -70, size: 15 });
             break;
     }
 }

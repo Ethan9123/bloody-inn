@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <!-- 引入Lucide图标 -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
     <div id="setup-screen" class="screen">
@@ -28,9 +28,10 @@
                 <div class="setup-group">
                     <label>选择 AI 叔叔难度</label>
                     <div class="btn-toggle-group">
-                        <button id="btn-diff-silly" class="btn btn-toggle active" onclick="setDifficulty('silly')">傻叔叔 (只看钱)</button>
-                        <button id="btn-diff-scheming" class="btn btn-toggle" onclick="setDifficulty('scheming')">阴险叔叔 (+拉拢分)</button>
-                        <button id="btn-diff-murderous" class="btn btn-toggle" onclick="setDifficulty('murderous')">嗜血叔叔 (+刺杀等级分)</button>
+                        <button id="btn-diff-silly" class="btn btn-toggle active" onclick="setDifficulty('silly')" title="按固定行动卡行动，结算只比现金支票">傻叔叔 (只看钱)</button>
+                        <button id="btn-diff-scheming" class="btn btn-toggle" onclick="setDifficulty('scheming')" title="固定行动卡，结算时拉拢堆每张额外计分">阴险叔叔 (+拉拢分)</button>
+                        <button id="btn-diff-murderous" class="btn btn-toggle" onclick="setDifficulty('murderous')" title="固定行动卡，结算时拉拢与刺杀等级都额外计分">嗜血叔叔 (+刺杀等级分)</button>
+                        <button id="btn-diff-mastermind" class="btn btn-toggle" onclick="setDifficulty('mastermind')" title="像真人一样审时度势：抢劫高价旅客、断你财路、扩张地盘，凭真本事比拼财富">策略叔叔 (真人级)</button>
                     </div>
                 </div>
                 <div class="setup-group">
@@ -49,7 +50,10 @@
                         <button id="btn-sound" class="btn btn-toggle active" onclick="toggleExpansion('sound')">音效开启</button>
                     </div>
                 </div>
-                <button id="btn-start" class="btn btn-primary btn-large" onclick="startGame()">开始罪恶之旅</button>
+                <div class="setup-actions">
+                    <button id="btn-tutorial" class="btn btn-secondary btn-large" onclick="openTutorial()"><i data-lucide="graduation-cap"></i> 新手教程：怎么玩</button>
+                    <button id="btn-start" class="btn btn-primary btn-large" onclick="startGame()">开始罪恶之旅</button>
+                </div>
             </div>
         </div>
     </div>
@@ -350,6 +354,21 @@
         </div>
     </div>
 
-    <script src="script.js?v=2"></script>
+    <!-- 弹窗：新手教程 -->
+    <div id="tutorial-modal" class="modal hidden">
+        <div class="modal-content tutorial-content glass">
+            <span class="close-btn" onclick="closeTutorial()">&times;</span>
+            <div class="tutorial-step-label" id="tutorial-step-label">第 1 / 7 步</div>
+            <h2 id="tutorial-title">教程</h2>
+            <div class="tutorial-body" id="tutorial-body"></div>
+            <div class="tutorial-dots" id="tutorial-dots"></div>
+            <div class="tutorial-nav">
+                <button class="btn btn-secondary" id="tutorial-prev" onclick="tutorialNav(-1)"><i data-lucide="chevron-left"></i> 上一步</button>
+                <button class="btn btn-primary" id="tutorial-next" onclick="tutorialNav(1)">下一步 <i data-lucide="chevron-right"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js?v=3"></script>
 </body>
 </html>
