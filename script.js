@@ -538,6 +538,7 @@ function welcomeGuestsSequentially() {
                     <span class="wf-back-hint">拿起后才知是谁…</span>
                 </div>
                 <div class="wf-face wf-front ${card.color}">
+                    <div class="card-emblem">${getRoleEmblem(card.role)}</div>
                     <strong>${card.name}</strong>
                     <span>${getRankDisplay(card)} · 携带 ${card.loot}F</span>
                 </div>
@@ -2106,6 +2107,7 @@ function renderUI() {
             `;
             // 将 onclick 挂载在内部的 card 元素上，防止布局遮挡
             let cardEl = doorDiv.querySelector('.card');
+            cardEl.insertAdjacentHTML('afterbegin', `<div class="card-emblem">${getRoleEmblem(card.role)}</div>`);
             if (doorDiv.onclick) {
                 cardEl.onclick = doorDiv.onclick;
                 doorDiv.onclick = null;
@@ -2157,6 +2159,7 @@ function renderUI() {
                 <span class="annex-ability">${card.annexDesc}</span>
             </div>
         `;
+        cardDiv.insertAdjacentHTML('afterbegin', `<div class="card-emblem">${getRoleEmblem(card.role)}</div>`);
         handDiv.appendChild(cardDiv);
     });
     document.getElementById('hand-count').innerText = `${player.hand.length} 张`;
@@ -2198,6 +2201,8 @@ function renderUI() {
             </div>
             ${buriedHtml}
         `;
+        let aCard = slotContainer.querySelector('.card');
+        if (aCard) aCard.insertAdjacentHTML('afterbegin', `<div class="card-emblem">${getRoleEmblem(card.role)}</div>`);
         annexesDiv.appendChild(slotContainer);
     });
     document.getElementById('player-annex-count').innerText = player.annexes.length;
@@ -2224,6 +2229,7 @@ function renderUI() {
                 <div class="card-loot">${card.loot}F</div>
             </div>
         `;
+        cardDiv.insertAdjacentHTML('afterbegin', `<div class="card-emblem">${getRoleEmblem(card.role)}</div>`);
         corpsesDiv.appendChild(cardDiv);
     });
     document.getElementById('player-corpse-count').innerText = player.corpses.length;
@@ -2290,6 +2296,29 @@ function renderUI() {
     renderObjectCards();
     
     refreshIcons();
+}
+
+// 原创派系徽记（纯 SVG，自绘，无任何第三方版权素材）
+const ROLE_EMBLEMS = {
+    // 手工业者：锤子
+    artisan: '<svg viewBox="0 0 64 64"><rect x="29" y="22" width="6" height="34" rx="2"/><path d="M16 12h24l6 8-6 8H16l5-8z"/></svg>',
+    // 商贾：钱币（环形）
+    merchant: '<svg viewBox="0 0 64 64"><path fill-rule="evenodd" d="M32 10a22 22 0 1 0 0 44 22 22 0 0 0 0-44zm0 9a13 13 0 1 1 0 26 13 13 0 0 1 0-26z"/><rect x="29" y="22" width="6" height="20"/><rect x="25" y="26" width="14" height="5" rx="2"/></svg>',
+    // 神职：十字架
+    religious: '<svg viewBox="0 0 64 64"><rect x="28" y="8" width="8" height="48" rx="2"/><rect x="16" y="22" width="32" height="8" rx="2"/></svg>',
+    // 贵族：王冠
+    noble: '<svg viewBox="0 0 64 64"><path d="M10 50 5 18l16 13L32 12l11 19 16-13-5 32z"/><rect x="10" y="50" width="44" height="7" rx="2"/></svg>',
+    // 警察：五角星
+    police: '<svg viewBox="0 0 64 64"><polygon points="32,6 39,24 58,24 43,36 48,56 32,44 16,56 21,36 6,24 25,24"/></svg>',
+    // 农民：麦穗
+    peasant: '<svg viewBox="0 0 64 64"><rect x="30" y="28" width="4" height="28" rx="2"/><ellipse cx="32" cy="18" rx="6" ry="12"/><ellipse cx="21" cy="25" rx="5" ry="10" transform="rotate(-28 21 25)"/><ellipse cx="43" cy="25" rx="5" ry="10" transform="rotate(28 43 25)"/></svg>',
+    // 嘉年华：马戏帐篷
+    carnie: '<svg viewBox="0 0 64 64"><rect x="30" y="5" width="3" height="9"/><path d="M33 6l10 4-10 4z"/><path d="M32 12 11 55h42z"/><path d="M32 12 24 55M32 12l8 43" stroke="rgba(0,0,0,.28)" stroke-width="2"/></svg>',
+    // 名流：高礼帽
+    notable: '<svg viewBox="0 0 64 64"><rect x="22" y="9" width="20" height="31" rx="2"/><rect x="22" y="33" width="20" height="5" fill="rgba(0,0,0,.32)"/><rect x="11" y="40" width="42" height="7" rx="3"/></svg>'
+};
+function getRoleEmblem(role) {
+    return ROLE_EMBLEMS[role] || '';
 }
 
 function getAptitudeIcon(aptitude) {
