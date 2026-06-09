@@ -457,12 +457,7 @@ function startGame() {
     player.corpses = [];
     player.objects = [];
     if (expansionOptions.objects) {
-        player.cash = 10;
-        let objects = shuffleCards(OBJECT_CARDS.map(o => ({ ...o }))).slice(0, 3);
-        objects.forEach((o, idx) => o.instanceId = `obj_${idx}_${Math.random().toString(36).substr(2, 5)}`);
-        player.objects = objects;
-        let totalObjectCost = objects.reduce((sum, obj) => sum + obj.cost, 0);
-        player.cash = Math.max(0, player.cash - totalObjectCost);
+        player.cash = 10; // 姑妈道具：起始现金 10F，道具通过轮抽获得、付款后再扣
     }
     
     ai.cash = 5;
@@ -498,8 +493,101 @@ function startGame() {
     refreshIcons();
     
     logMessage("系统", "开始了一局新的《血腥旅馆》游戏。夜幕降临...", "system");
+    renderUI();
+    if (expansionOptions.objects) {
+        startObjectDraft();   // 姑妈道具轮抽 → 付款 → finishObjectSetup() → 迎客
+    } else {
+        finishObjectSetup();
+    }
+}
+
+function finishObjectSetup() {
+    renderUI();
     showBanner('THE BLOODY INN', '罪恶之夜降临…', 'gamestart');
     setTimeout(runPhaseWelcome, 900);
+}
+
+// ==========================================
+// 姑妈道具：轮抽（4选1→3选1→2选1，最后一张丢弃）+ 付款选择
+// ==========================================
+let draftState = null;
+let paymentState = null;
+
+function startObjectDraft() {
+    let deck = shuffleCards(OBJECT_CARDS.map(o => ({ ...o })));
+    deck.forEach((o, i) => o.instanceId = `obj_${i}_${Math.random().toString(36).substr(2, 5)}`);
+    draftState = { deck, packetSizes: [4, 3, 2], step: 0, picked: [], packet: [] };
+    dealDraftPacket();
+}
+function dealDraftPacket() {
+    let size = draftState.packetSizes[draftState.step];
+    draftState.packet = draftState.deck.splice(0, size);
+    renderDraftModal();
+    document.getElementById('draft-modal').classList.remove('hidden');
+}
+function pickDraftCard(instanceId) {
+    if (!draftState) return;
+    let idx = draftState.packet.findIndex(o => o.instanceId === instanceId);
+    if (idx === -1) return;
+    draftState.picked.push(draftState.packet.splice(idx, 1)[0]);
+    playSound('object');
+    draftState.step++;
+    if (draftState.step < draftState.packetSizes.length) {
+        dealDraftPacket();
+    } else {
+        document.getElementById('draft-modal').classList.add('hidden');
+        startObjectPayment();
+    }
+}
+function renderDraftModal() {
+    const hints = ['从 4 张里选 1 张（其余 3 张传给下一位）', '从 3 张里选 1 张（其余 2 张传给下一位）', '从 2 张里选 1 张（剩下 1 张丢弃）'];
+    document.getElementById('draft-step-label').innerText = `轮抽 ${draftState.step + 1} / 3 · 已选 ${draftState.picked.length} 张`;
+    document.getElementById('draft-hint').innerText = hints[draftState.step];
+    document.getElementById('draft-cards').innerHTML = draftState.packet.map(o =>
+        `<button class="draft-card" onclick="pickDraftCard('${o.instanceId}')">
+            <span class="draft-cost">${o.cost}F</span>
+            <span class="draft-name">${o.name}</span>
+            <span class="draft-timing">${o.timing}</span>
+            <span class="draft-desc">${o.desc}</span>
+        </button>`).join('');
+}
+function startObjectPayment() {
+    paymentState = { keep: draftState.picked.map(() => true) };
+    renderPaymentModal();
+    document.getElementById('payment-modal').classList.remove('hidden');
+}
+function toggleKeepObject(i) {
+    if (!paymentState) return;
+    paymentState.keep[i] = !paymentState.keep[i];
+    renderPaymentModal();
+}
+function paymentTotal() {
+    return draftState.picked.reduce((s, o, i) => s + (paymentState.keep[i] ? o.cost : 0), 0);
+}
+function renderPaymentModal() {
+    let total = paymentTotal();
+    document.getElementById('payment-cards').innerHTML = draftState.picked.map((o, i) =>
+        `<div class="pay-card ${paymentState.keep[i] ? 'kept' : 'dropped'}" onclick="toggleKeepObject(${i})">
+            <span class="pay-cost">${o.cost}F</span>
+            <span class="pay-name">${o.name}</span>
+            <span class="pay-desc">${o.desc}</span>
+            <span class="pay-state">${paymentState.keep[i] ? '✔ 保留' : '✖ 丢弃'}</span>
+        </div>`).join('');
+    document.getElementById('payment-total').innerHTML =
+        `保留花费 <strong>${total}F</strong> ，起始 10F → 开局现金 <strong>${Math.max(0, 10 - total)}F</strong>`;
+    let btn = document.getElementById('payment-confirm');
+    btn.disabled = total > 10;
+    btn.innerText = total > 10 ? '花费超过 10F，请少留几张' : '确认并开局';
+}
+function confirmObjectPayment() {
+    let total = paymentTotal();
+    if (total > 10) return;
+    player.objects = draftState.picked.filter((o, i) => paymentState.keep[i]);
+    player.cash = 10 - total;
+    logMessage("道具", `姑妈道具轮抽结束：保留 ${player.objects.length} 张道具，花费 ${total}F，开局现金 ${player.cash}F。`, "player");
+    document.getElementById('payment-modal').classList.add('hidden');
+    draftState = null; paymentState = null;
+    finishObjectSetup();
 }
 
 // ==========================================

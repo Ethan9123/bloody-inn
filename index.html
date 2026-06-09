@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <!-- 引入Lucide图标 -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="style.css?v=4">
+    <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
     <div id="setup-screen" class="screen">
@@ -375,6 +375,29 @@
         </div>
     </div>
 
-    <script src="script.js?v=4"></script>
+    <!-- 弹窗：姑妈道具轮抽 -->
+    <div id="draft-modal" class="modal hidden">
+        <div class="modal-content draft-content glass">
+            <h2><i data-lucide="gift"></i> 姑妈道具 · 轮抽</h2>
+            <div class="draft-step-label" id="draft-step-label"></div>
+            <p class="draft-hint" id="draft-hint"></p>
+            <div class="draft-cards" id="draft-cards"></div>
+        </div>
+    </div>
+
+    <!-- 弹窗：道具付款选择 -->
+    <div id="payment-modal" class="modal hidden">
+        <div class="modal-content draft-content glass">
+            <h2><i data-lucide="coins"></i> 道具付款</h2>
+            <p class="draft-hint">你抽到了 3 张道具。点击切换「保留 / 丢弃」：保留的需付费（起始 10F），丢弃的不要钱。可以全留、留任意几张、或全丢。</p>
+            <div class="payment-cards" id="payment-cards"></div>
+            <div class="payment-total" id="payment-total"></div>
+            <div class="modal-footer">
+                <button class="btn btn-primary btn-large" id="payment-confirm" onclick="confirmObjectPayment()">确认并开局</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js?v=5"></script>
 </body>
 </html>

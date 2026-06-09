@@ -1812,6 +1812,55 @@ body {
 .card-tip .tip-note { margin-top: 6px; font-size: 11px; color: #90a4ae; }
 
 /* ==========================================================================
+   姑妈道具轮抽 / 付款
+   ========================================================================== */
+.draft-content { max-width: 720px; width: min(720px, 94vw); text-align: center; }
+.draft-step-label { color: #ffca28; font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.draft-hint { color: #b0bec5; font-size: 13px; margin: 0 0 14px; line-height: 1.5; }
+.draft-cards { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.draft-card {
+    width: 150px;
+    text-align: left;
+    display: grid;
+    gap: 4px;
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #cfd8dc;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s, background 0.15s;
+}
+.draft-card:hover { transform: translateY(-4px); border-color: #ffca28; background: rgba(255, 202, 40, 0.08); }
+.draft-cost { color: #ffca28; font-weight: 900; font-size: 15px; }
+.draft-name { color: #fff; font-weight: 700; font-size: 14px; }
+.draft-timing { color: #90a4ae; font-size: 11px; }
+.draft-desc { color: #b0bec5; font-size: 11.5px; line-height: 1.45; }
+
+.payment-cards { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
+.pay-card {
+    width: 180px;
+    text-align: left;
+    display: grid;
+    gap: 5px;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.15s;
+}
+.pay-card.kept { background: rgba(102, 187, 106, 0.12); border-color: #66bb6a; }
+.pay-card.dropped { background: rgba(120, 120, 120, 0.1); border-color: rgba(255,255,255,0.12); opacity: 0.6; }
+.pay-card .pay-cost { color: #ffca28; font-weight: 900; }
+.pay-card .pay-name { color: #fff; font-weight: 700; }
+.pay-card .pay-desc { color: #b0bec5; font-size: 11.5px; line-height: 1.4; }
+.pay-card .pay-state { font-size: 12px; font-weight: 700; }
+.pay-card.kept .pay-state { color: #66bb6a; }
+.pay-card.dropped .pay-state { color: #90a4ae; }
+.payment-total { color: #cfd8dc; font-size: 14px; margin-bottom: 12px; }
+.payment-total strong { color: #ffca28; }
+
+/* ==========================================================================
    动作特效：锚定飘字 / 粒子 / 警笛 / 彩纸 / 房间高亮
    ========================================================================== */
 .effect-burst.anchored {
