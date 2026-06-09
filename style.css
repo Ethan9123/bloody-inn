@@ -1088,6 +1088,92 @@ body {
     color: #ef5350;
 }
 
+/* 多人局：其他 AI 叔叔面板 */
+.opponents-box {
+    padding: 14px 16px;
+}
+.opponents-box.hidden { display: none; }
+.opponents-box h4 {
+    font-family: var(--font-heading);
+    font-size: 13px;
+    color: #90a4ae;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.opponents-box .uncle-card {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-left: 3px solid #ef5350;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+}
+.opponents-box .uncle-card:last-child { margin-bottom: 0; }
+.opponents-box .uncle-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+.opponents-box .uncle-name {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 13px;
+    color: #ef9a9a;
+}
+.opponents-box .uncle-diff {
+    font-size: 10px;
+    color: #b0bec5;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    padding: 1px 6px;
+}
+.opponents-box .uncle-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    font-size: 11.5px;
+    color: #cfd8dc;
+}
+
+/* 设置：叔叔②③难度下拉 */
+.extra-ai-diffs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+}
+.extra-ai-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.extra-ai-row label {
+    font-size: 13px;
+    color: #b0bec5;
+    margin: 0;
+}
+.extra-ai-row select {
+    flex: 0 0 auto;
+    min-width: 130px;
+    background: rgba(0, 0, 0, 0.35);
+    color: #eceff1;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 13px;
+}
+.extra-ai-row select:focus { outline: 1px solid #ef5350; }
+
+/* 财富轨：其他叔叔标记 */
+.marker.extra-uncle {
+    background: #ff8a80;
+    font-size: 9px;
+}
+
 /* 公共牌库状态 */
 .deck-status-box {
     display: flex;

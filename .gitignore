@@ -23,3 +23,6 @@ cards/
 
 # 本地卡面提取脚本（仅本地使用，处理版权 PNP，不公开）
 tools/
+
+# ML 优化器的原始运行日志（可复现产物；最终权重已存入 ml/best_weights.json）
+ml/results.jsonl

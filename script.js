@@ -189,9 +189,21 @@ let expansionOptions = {
 let roundNum = 1;
 let seasonNum = 1;
 let currentPhase = 'welcome';
-let firstPlayer = 'player';
-let activeTurn = 'player';
+// N 人局回合状态：turnOrder 是本局座位顺序（含 'player' 与 AI 叔叔下标），玩家位置随机
+let playerCount = 2;            // 2~4 人 = 你 + 1~3 个 AI 叔叔
+let aiDiffs = ['silly'];       // 每个 AI 叔叔各自的难度（长度 = playerCount-1，叔叔①默认与按钮一致）
+let savedDiffs = ['silly', 'mastermind', 'mastermind']; // 各座位难度的持久记忆（人数升降不丢失玩家的选择）
+let turnOrder = [];            // 例如 [0, 'player', 1]
+let firstActorIdx = 0;         // 本轮主理人在 turnOrder 中的下标（每轮轮换）
+let activeActorIdx = 0;        // 当前行动者在 turnOrder 中的下标
 let actionNumber = 1;
+// 当前/主理人行动者与判定
+function currentActor() { return turnOrder[activeActorIdx]; }
+function hostActor() { return turnOrder[firstActorIdx]; }
+function isHumanTurn() { return currentActor() === 'player'; }
+function isHumanHost() { return hostActor() === 'player'; }
+function actorSeat(a) { return a === 'player' ? player : aiUncles[a]; }
+function actorName(a) { return a === 'player' ? '玩家' : (aiUncles[a] && aiUncles[a].name) || ('叔叔' + (a + 1)); }
 
 let travelerDeck = [];
 let exitStack = [];
@@ -227,28 +239,41 @@ let ai = {
     killPile: []  // 刺杀堆 (计分)
 };
 
+// AI 叔叔数组：ai 始终指向第一个（向后兼容旧的单 AI 代码路径）
+let aiUncles = [ai];
+const UNCLE_NAMES = ['邪恶叔叔', '阴狠表哥', '贪婪姑父', '冷血舅舅'];
+function makeUncle(idx, diff) {
+    return {
+        idx, difficulty: diff, name: UNCLE_NAMES[idx] || ('叔叔' + (idx + 1)),
+        cash: 5, checks: 1, keys: [], corpses: [], bribePile: [], killPile: []
+    };
+}
+// 房间归属辅助：room.key ∈ { 'player'(人类), 0/1/2(AI叔叔下标), 'neutral', 'closed' }
+function isHumanRoom(r) { return r.key === 'player'; }
+function isAIRoom(r) { return typeof r.key === 'number'; }
+function uncleOfRoom(r) { return isAIRoom(r) ? aiUncles[r.key] : null; }
+
+// 按人数生成 8 间客房版图（你 + 1~3 个 AI 叔叔；'s' 表示该房带客房服务）
+function buildBoard() {
+    const SPECS = {
+        2: [['player'], ['neutral'], [0, 's'], [0], [0], ['closed'], ['closed'], ['closed']],
+        3: [['player'], [0, 's'], [0], [1, 's'], [1], ['neutral'], ['closed'], ['closed']],
+        4: [['player'], [0, 's'], [0], [1, 's'], [1], [2, 's'], ['neutral'], ['closed']],
+    };
+    let spec = SPECS[playerCount] || SPECS[2];
+    return spec.map((s, i) => ({
+        id: i + 1,
+        key: s[0],
+        serviceOwner: s[1] === 's' ? s[0] : null,
+        hasService: s[1] === 's',
+        occupant: null,
+    }));
+}
+
 // 房间状态
 let rooms = [];
 
-// AI 动作卡组 (14张)
-const AI_ACTION_TEMPLATES = [
-    { name: "AI_01", top: "kill", bottom: "peasant_bribe" },
-    { name: "AI_02", top: "bribe", bottom: "check" },
-    { name: "AI_03", top: "room", bottom: "kill" },
-    { name: "AI_04", top: "room_service", bottom: "bribe" },
-    { name: "AI_05", top: "peasant_bribe", bottom: "room" },
-    { name: "AI_06", top: "kill", bottom: "room_service" },
-    { name: "AI_07", top: "bribe", bottom: "kill" },
-    { name: "AI_08", top: "check", bottom: "bribe" },
-    { name: "AI_09", top: "room", bottom: "peasant_bribe" },
-    { name: "AI_10", top: "room_service", bottom: "check" },
-    { name: "AI_11", top: "peasant_bribe", bottom: "kill" },
-    { name: "AI_12", top: "bribe", bottom: "room" },
-    { name: "AI_13", top: "kill", bottom: "room_service" },
-    { name: "AI_14", top: "check", bottom: "bribe" }
-];
-let aiDeck = [];
-let aiDiscard = [];
+// 注：旧版「固定 AI 行动卡组」已被策略引擎(aiStrategicAction)取代，整段连同 aiDeck/aiDiscard 一并移除。
 
 // 当前进行中行动的状态缓存 (仅玩家)
 let pendingAction = {
@@ -262,7 +287,11 @@ let pendingAction = {
 const HUMAN_PLAYER_COUNT = 2;
 
 function shuffleCards(cards) {
-    cards.sort(() => Math.random() - 0.5);
+    // 无偏 Fisher-Yates 洗牌（sort(()=>Math.random()-0.5) 分布有偏，会让座位/牌序系统性倾斜）
+    for (let i = cards.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cards[i], cards[j]] = [cards[j], cards[i]];
+    }
     return cards;
 }
 
@@ -280,9 +309,9 @@ function setRoomService(room, owner) {
 }
 
 function syncAIKeys() {
-    ai.keys = rooms.filter(r => r.key === 'ai').map(r => r.id);
-    let aiServiceRoom = rooms.find(r => r.serviceOwner === 'ai');
-    ai.hasServiceOn = aiServiceRoom ? aiServiceRoom.id : null;
+    aiUncles.forEach((u, i) => {
+        u.keys = rooms.filter(r => r.key === i).map(r => r.id);
+    });
 }
 
 function openRoomCount() {
@@ -346,8 +375,13 @@ function setGameLength(length) {
     document.getElementById('btn-long-game').classList.toggle('active', length === 'long');
 }
 
+const DIFF_KEYS = ['silly', 'scheming', 'murderous', 'mastermind', 'ml'];
+const DIFF_LABELS = { silly: '傻叔叔', scheming: '阴险叔叔', murderous: '嗜血叔叔', mastermind: '策略叔叔', ml: '学习叔叔' };
+
 function setDifficulty(diff) {
-    difficulty = diff;
+    difficulty = diff;          // 叔叔① 的难度（向后兼容旧的单 AI 字段）
+    aiDiffs[0] = diff;
+    savedDiffs[0] = diff;
     document.getElementById('btn-diff-silly').classList.toggle('active', diff === 'silly');
     document.getElementById('btn-diff-scheming').classList.toggle('active', diff === 'scheming');
     document.getElementById('btn-diff-murderous').classList.toggle('active', diff === 'murderous');
@@ -355,6 +389,39 @@ function setDifficulty(diff) {
     if (mm) mm.classList.toggle('active', diff === 'mastermind');
     let ml = document.getElementById('btn-diff-ml');
     if (ml) ml.classList.toggle('active', diff === 'ml');
+}
+
+// 设置玩家人数（2~4），并据此调整每个 AI 的难度选择器
+function setPlayerCount(n) {
+    playerCount = n;
+    [2, 3, 4].forEach(k => {
+        let b = document.getElementById('btn-pc-' + k);
+        if (b) b.classList.toggle('active', k === n);
+    });
+    // aiDiffs 长度对齐为 playerCount-1：升人数时从持久记忆 savedDiffs 还原此前的选择（而非一律重置为 mastermind）
+    while (aiDiffs.length < n - 1) { let idx = aiDiffs.length; aiDiffs.push(savedDiffs[idx] || 'mastermind'); }
+    aiDiffs.length = n - 1;
+    if (!aiDiffs[0]) aiDiffs[0] = difficulty;
+    renderExtraAIDiffs();
+}
+
+// 叔叔②③的难度下拉（叔叔①仍用顶部按钮）
+function renderExtraAIDiffs() {
+    let box = document.getElementById('extra-ai-diffs');
+    if (!box) return;
+    if (playerCount <= 2) { box.innerHTML = ''; return; }
+    let rows = '';
+    for (let i = 1; i < playerCount - 1; i++) {
+        let cur = aiDiffs[i] || 'mastermind';
+        let opts = DIFF_KEYS.map(k => `<option value="${k}"${k === cur ? ' selected' : ''}>${DIFF_LABELS[k]}</option>`).join('');
+        rows += `<div class="extra-ai-row"><label>叔叔${'①②③④'[i]}难度</label><select onchange="setExtraAIDiff(${i}, this.value)">${opts}</select></div>`;
+    }
+    box.innerHTML = rows;
+}
+
+function setExtraAIDiff(i, diff) {
+    aiDiffs[i] = diff;
+    savedDiffs[i] = diff; // 记住该座位的选择，人数升降后仍可还原
 }
 
 function setLang(l) {
@@ -430,28 +497,19 @@ function startGame() {
         shuffleCards(eventDeck);
     }
     
-    // 2. 初始化客房
-    // 邪恶叔叔模式使用 8 间客房版图，其中 5 间初始开放：
-    // 玩家 1 间、AI 3 间（其中 1 间带客房服务）、中立 1 间；其余客房暂未开放。
-    rooms = [
-        { id: 1, key: 'player', serviceOwner: null, hasService: false, occupant: null },
-        { id: 2, key: 'neutral', serviceOwner: null, hasService: false, occupant: null },
-        { id: 3, key: 'ai', serviceOwner: 'ai', hasService: true, occupant: null },
-        { id: 4, key: 'ai', serviceOwner: null, hasService: false, occupant: null },
-        { id: 5, key: 'ai', serviceOwner: null, hasService: false, occupant: null },
-        { id: 6, key: 'closed', serviceOwner: null, hasService: false, occupant: null },
-        { id: 7, key: 'closed', serviceOwner: null, hasService: false, occupant: null },
-        { id: 8, key: 'closed', serviceOwner: null, hasService: false, occupant: null }
-    ];
-    
-    aiDeck = JSON.parse(JSON.stringify(AI_ACTION_TEMPLATES));
-    shuffleCards(aiDeck);
-    aiDiscard = [];
-    
+    // 2. 建立 AI 叔叔（每个各自难度）与本局座位
+    aiUncles = [];
+    for (let i = 0; i < playerCount - 1; i++) aiUncles.push(makeUncle(i, aiDiffs[i] || 'mastermind'));
+    ai = aiUncles[0];
+
+    // 3. 按人数初始化客房版图（room.key: 'player' / AI叔叔下标 / 'neutral' / 'closed'）
+    rooms = buildBoard();
+    syncAIKeys();
+
     player.cash = 5;
     player.checks = 1;
     player.annexes = [
-        { 
+        {
             card: { name: "大篷车宿营地 (Barn)", role: "artisan", color: "artisan-red", rank: 1, loot: 0, annexName: "大篷棚车", annexDesc: "自带1个埋尸坑的初始资产别馆。", aptitude: "none" },
             buried: []
         }
@@ -461,30 +519,27 @@ function startGame() {
     if (expansionOptions.objects) {
         player.cash = 10; // 姑妈道具：起始现金 10F，道具通过轮抽获得、付款后再扣
     }
-    
-    ai.cash = 5;
-    ai.checks = 1;
-    syncAIKeys();
-    ai.corpses = [];
-    ai.bribePile = [];
-    ai.killPile = [];
-    
+
+    // 4. 随机座位顺序（玩家位置随机），主理人从座位 0 起每轮轮换
+    turnOrder = ['player'];
+    for (let i = 0; i < playerCount - 1; i++) turnOrder.push(i);
+    shuffleCards(turnOrder);
+    firstActorIdx = 0;
+    activeActorIdx = 0;
+
     roundNum = 1;
     seasonNum = 1;
     currentPhase = 'welcome';
-    firstPlayer = 'player';
-    activeTurn = firstPlayer;
     actionNumber = 1;
     
     document.getElementById('setup-screen').classList.add('hidden');
     document.getElementById('game-screen').classList.remove('hidden');
     
     document.getElementById('info-game-length').innerText = (gameLength === 'short') ? '短局 (35张牌)' : '长局 (45张牌)';
-    let diffName = '傻叔叔 (只算支票)';
-    if (difficulty === 'scheming') diffName = '阴险叔叔 (+拉拢分)';
-    if (difficulty === 'murderous') diffName = '嗜血叔叔 (+刺杀积分)';
-    if (difficulty === 'mastermind') diffName = '策略叔叔 (真人级)';
-    if (difficulty === 'ml') diffName = '学习叔叔 (ML调优)';
+    // N 人局：列出每个 AI 叔叔的难度（座位随机，故按叔叔编号列出；2 人局只有一个 AI，省去编号）
+    let diffName = aiUncles.length === 1
+        ? (DIFF_LABELS[aiUncles[0].difficulty] || aiUncles[0].difficulty)
+        : aiUncles.map((u, i) => `${'①②③④'[i]}${DIFF_LABELS[u.difficulty] || u.difficulty}`).join('  ');
     document.getElementById('info-difficulty').innerText = diffName;
     let enabledModules = [];
     if (expansionOptions.carnies) enabledModules.push('嘉年华员工');
@@ -604,15 +659,15 @@ function runPhaseWelcome() {
     resetRoundEffects();
     resetPendingAction();
     updateHeaderStatus("黄昏迎客", "welcome");
-    let hostName = firstPlayer === 'player' ? '玩家' : '邪恶叔叔';
+    let hostName = actorName(hostActor());
     logMessage("系统", `--- 第 ${roundNum} 轮：黄昏阶段 (迎客入店)，本轮主理人：${hostName} ---`, "system");
     showBanner(`第 ${roundNum} 轮`, `主理人：${hostName} · ${seasonNum === 1 ? '第一' : '第二'}季度`, 'round');
 
-    if (firstPlayer === 'player') {
-        logMessage("玩家", "您是第一玩家。每抽到一位旅客后，请选择一间开放且空置的客房。", "player");
+    if (isHumanHost()) {
+        logMessage("玩家", "您是本轮主理人。每抽到一位旅客后，请选择一间开放且空置的客房。", "player");
         welcomeGuestsSequentially();
     } else {
-        logMessage("AI", "邪恶叔叔是第一玩家，他决定迎客的房间顺序...", "ai");
+        logMessage("AI", `${hostName}是本轮主理人，由他安排迎客的房间顺序...`, "ai");
         setTimeout(aiWelcomeGuests, 1000);
     }
 }
@@ -647,22 +702,22 @@ function welcomeGuestsSequentially() {
                 <span>${getRankDisplay(card)} · 携带 ${card.loot}F</span>
             </div>
         </div>
-        <div class="hint-line" id="welcome-hint">${firstPlayer === 'player'
+        <div class="hint-line" id="welcome-hint">${isHumanHost()
             ? `请把 <strong>${card.name}</strong> 安排进一间开放且空置的客房（点击客房）。`
-            : '邪恶叔叔正在安排入住…'}</div>
+            : '主理人正在安排入住…'}</div>
         ${nextCard
             ? `<div class="next-peek">取走后下一位：<strong>${nextCard.name}</strong>（${getRankDisplay(nextCard)}）</div>`
             : `<div class="next-peek">这是入店牌堆的最后一位旅客。</div>`}
     `;
     document.getElementById('action-box-title').innerText = "黄昏迎客";
-    document.getElementById('action-box-desc').innerText = firstPlayer === 'player' ? `请安置 ${card.name}（点击客房）。` : '';
+    document.getElementById('action-box-desc').innerText = isHumanHost() ? `请安置 ${card.name}（点击客房）。` : '';
     enableMainActionButtons(false);
     playSound('checkin');
     refreshIcons();
 }
 
 function handleWelcomeRoomSelect(roomId) {
-    if (currentPhase !== 'welcome' || !pendingWelcomeCard || firstPlayer !== 'player') return;
+    if (currentPhase !== 'welcome' || !pendingWelcomeCard || !isHumanHost()) return;
     let room = rooms.find(r => r.id === roomId);
     if (!room || !isOpenRoom(room) || room.occupant) return;
 
@@ -696,15 +751,17 @@ function aiWelcomeGuests() {
     }
 
     drawn.sort((a, b) => getCardRank(a, 'bribe') - getCardRank(b, 'bribe'));
-    let playerRooms = emptyRooms.filter(r => r.key === 'player');
-    let aiRooms = emptyRooms.filter(r => r.key === 'ai');
-    let neutralRooms = emptyRooms.filter(r => r.key !== 'player' && r.key !== 'ai');
+    // 主理人(某个 AI 叔叔)的视角：低等级塞给对手，高等级留给自己，其余进中立房
+    let host = aiUncles[hostActor()];
+    let ownRooms = emptyRooms.filter(r => r.key === host.idx);
+    let oppRooms = emptyRooms.filter(r => r.key === 'player' || (typeof r.key === 'number' && r.key !== host.idx));
+    let neutralRooms = emptyRooms.filter(r => r.key === 'neutral');
 
     // 单次分配，避免双计数器交叉导致的重复/漏发
     let assignments = [];
     let lo = 0, hi = drawn.length - 1;
-    playerRooms.forEach(r => { if (lo <= hi) assignments.push({ room: r, card: drawn[lo++], kind: 'player' }); });
-    aiRooms.forEach(r => { if (lo <= hi) assignments.push({ room: r, card: drawn[hi--], kind: 'ai' }); });
+    oppRooms.forEach(r => { if (lo <= hi) assignments.push({ room: r, card: drawn[lo++], kind: 'opp' }); });
+    ownRooms.forEach(r => { if (lo <= hi) assignments.push({ room: r, card: drawn[hi--], kind: 'own' }); });
     neutralRooms.forEach(r => { if (lo <= hi) assignments.push({ room: r, card: drawn[lo++], kind: 'neutral' }); });
 
     // 逐个入住，带交错的翻牌/入住动画
@@ -718,10 +775,11 @@ function aiWelcomeGuests() {
         let { room, card, kind } = assignments[idx++];
         room.occupant = card;
         let rank = getCardRank(card, 'bribe');
-        if (kind === 'player') {
-            logMessage("AI", `邪恶叔叔故意让等级 ${rank} 的 ${card.name} 入住了您的 ${room.id} 号房间。`, "ai");
-        } else if (kind === 'ai') {
-            logMessage("AI", `邪恶叔叔为自己的 ${room.id} 号房间安排了等级 ${rank} 的高价值 ${card.name} 入住。`, "ai");
+        let ownerName = isHumanRoom(room) ? '您' : (uncleOfRoom(room) ? uncleOfRoom(room).name : '中立');
+        if (kind === 'opp') {
+            logMessage("AI", `${host.name}故意把等级 ${rank} 的 ${card.name} 塞进了 ${ownerName} 的 ${room.id} 号房。`, "ai");
+        } else if (kind === 'own') {
+            logMessage("AI", `${host.name}为自己的 ${room.id} 号房安排了等级 ${rank} 的高价值 ${card.name}。`, "ai");
         } else {
             logMessage("AI", `${card.name}（等级 ${rank}）被安排在 ${room.id} 号中立客房入住。`, "ai");
         }
@@ -779,10 +837,9 @@ function resolveCarnieEvent() {
         roundEffects.forceInvestigation = true;
     } else if (currentEvent.id === 'broken_safe') {
         let playerLost = Math.ceil(player.checks / 2);
-        let aiLost = Math.ceil(ai.checks / 2);
         player.checks = Math.max(0, player.checks - playerLost);
-        ai.checks = Math.max(0, ai.checks - aiLost);
-        logMessage("事件", `破保险箱：你失去 ${playerLost} 张支票，邪恶叔叔失去 ${aiLost} 张。`, "warn");
+        aiUncles.forEach(u => { u.checks = Math.max(0, u.checks - Math.ceil(u.checks / 2)); });
+        logMessage("事件", `破保险箱：所有人各失去约一半支票（你失去 ${playerLost} 张）。`, "warn");
     } else if (currentEvent.id === 'cirrhosis') {
         if (bistro.length > 0) {
             let removed = bistro.pop();
@@ -816,13 +873,14 @@ function triggerBarkerBonus(card) {
 function triggerRoomServiceImmediate(room) {
     if (room.occupant && roomHasService(room)) {
         let occupantRank = room.occupant.rank;
-        let owner = room.serviceOwner || room.key;
+        let owner = (room.serviceOwner !== null && room.serviceOwner !== undefined) ? room.serviceOwner : room.key;
         if (owner === 'player') {
             addPlayerCash(occupantRank);
             logMessage("玩家", `您的客房服务在 ${room.id} 房生效，立刻获得 ${occupantRank}F！`, "player");
-        } else if (owner === 'ai') {
-            addAICash(occupantRank);
-            logMessage("AI", `邪恶叔叔的客房服务在 ${room.id} 房生效，他立刻获得了额外 ${occupantRank}F！`, "ai");
+        } else if (typeof owner === 'number' && aiUncles[owner]) {
+            let u = aiUncles[owner];
+            addUncleCash(u, occupantRank);
+            logMessage("AI", `${u.name}的客房服务在 ${room.id} 房生效，他获得了额外 ${occupantRank}F！`, "ai");
         }
     }
 }
@@ -832,8 +890,8 @@ function finishWelcomePhase() {
     let occupiedCount = rooms.filter(r => isOpenRoom(r) && r.occupant).length;
     renderUI();
 
-    if (finalRoundPending && occupiedCount < HUMAN_PLAYER_COUNT) {
-        logMessage("系统", "最终迎客时旅馆内旅客不足 2 位，按规则不再进行最后一轮行动。", "warn");
+    if (finalRoundPending && occupiedCount < playerCount) {
+        logMessage("系统", `最终迎客时旅馆内旅客不足 ${playerCount} 位，按规则不再进行最后一轮行动。`, "warn");
         setTimeout(triggerGameOver, 700);
         return;
     }
@@ -845,7 +903,7 @@ function startNightPhase() {
     pendingWelcomeCard = null;
     resetPendingAction();
     actionNumber = 1;
-    activeTurn = firstPlayer;
+    activeActorIdx = firstActorIdx;
     runActionStep();
 }
 
@@ -855,21 +913,23 @@ function runActionStep() {
         setTimeout(runPhaseMorning, 1000);
         return;
     }
-    
+
     currentPhase = `action${actionNumber}`;
     updateHeaderStatus(`夜晚行动 (动作 ${actionNumber}/2)`, "action");
-    
-    if (activeTurn === 'player') {
+
+    let actor = currentActor();
+    if (actor === 'player') {
         document.getElementById('player-action-box').classList.add('active');
         document.getElementById('action-box-title').innerText = `您的第 ${actionNumber} 次行动`;
         document.getElementById('action-box-desc').innerText = "请从下方选择一项违法行动：";
         enableMainActionButtons(true);
     } else {
+        let u = aiUncles[actor];
         document.getElementById('player-action-box').classList.remove('active');
-        document.getElementById('action-box-title').innerText = "邪恶叔叔正在执行行动...";
-        document.getElementById('action-box-desc').innerText = "等待叔叔翻开他的行动卡片...";
+        document.getElementById('action-box-title').innerText = `${u.name}正在执行行动...`;
+        document.getElementById('action-box-desc').innerText = `等待 ${u.name} 出手…`;
         enableMainActionButtons(false);
-        setTimeout(aiStrategicAction, 1200); // 所有难度都用策略引擎（按性格与阶段加权），不再翻固定行动卡
+        setTimeout(() => aiStrategicAction(u), 1200); // 所有难度都用策略引擎（按性格与阶段加权）
     }
 }
 
@@ -1149,17 +1209,19 @@ function finishPlayerAction() {
 }
 
 function advanceTurn() {
-    if (activeTurn === firstPlayer) {
-        activeTurn = (firstPlayer === 'player') ? 'ai' : 'player';
-        runActionStep();
-    } else {
+    let next = (activeActorIdx + 1) % playerCount;
+    if (next === firstActorIdx) {
+        // 本动作轮所有人都走完
         if (actionNumber === 1) {
             actionNumber = 2;
-            activeTurn = firstPlayer;
+            activeActorIdx = firstActorIdx;
             runActionStep();
         } else {
             runPhaseMorning();
         }
+    } else {
+        activeActorIdx = next;
+        runActionStep();
     }
 }
 
@@ -1595,7 +1657,8 @@ function confirmLaunder() {
 // ==========================================
 // 策略叔叔（真人级）：审时度势地选择行动，而非翻固定行动卡
 // ==========================================
-function aiThink(text) {
+function aiThink(self, text) {
+    if (typeof self === 'string') { text = self; } // 向后兼容单参调用
     const el = document.getElementById('ai-drawn-card');
     if (el) el.innerText = '策略决策';
     logMessage("AI", text, "ai");
@@ -1629,239 +1692,83 @@ const PHASE_MOD = {
     late:  { kill: 1.35, room: 0.25, service: 0.4 },
 };
 
-function aiStrategicAction() {
-    let prof = AI_PROFILES[difficulty] || AI_PROFILES.mastermind;
+function aiStrategicAction(self) {
+    self = self || ai;
+    let prof = AI_PROFILES[self.difficulty] || AI_PROFILES.mastermind;
     let pm = (prof.phase && prof.phase[getRoundPhase()]) || PHASE_MOD[getRoundPhase()];
     let occupied = rooms.filter(r => isOpenRoom(r) && r.occupant);
     let neutralRoom = rooms.find(r => r.key === 'neutral');
-    let myOpenRooms = rooms.filter(r => isOpenRoom(r) && r.key === 'ai');
+    let myOpenRooms = rooms.filter(r => isOpenRoom(r) && r.key === self.idx);
     let unservicedMine = myOpenRooms.find(r => !roomHasService(r));
+    const isOpp = r => r.key === 'player' || (typeof r.key === 'number' && r.key !== self.idx);
 
     // 为每个可选行动按「性格 × 阶段」估收益分，再挑最高的执行
     let plans = [];
 
     if (occupied.length > 0) {
-        // A) 刺杀并洗劫：油水越高越值得，住你房里额外加权（断你财路）
+        // A) 刺杀并洗劫：油水越高越值得，住对手房里额外加权（断对手财路）
         let killTarget = occupied.slice().sort((a, b) => b.occupant.loot - a.occupant.loot)[0];
-        let kScore = killTarget.occupant.loot * prof.kill * pm.kill + (killTarget.key === 'player' ? 6 : 0) * prof.deny;
+        let kScore = killTarget.occupant.loot * prof.kill * pm.kill + (isOpp(killTarget) ? 6 : 0) * prof.deny;
         plans.push({ type: 'kill', room: killTarget, score: kScore });
 
-        // B) 拉拢：拆你的台、攒拉拢堆，偏好高等级、你房间、非农民
+        // B) 拉拢：拆对手的台、攒拉拢堆，偏好高等级、对手房间、非农民
         let bribeTarget = occupied.slice().sort((a, b) =>
             (getCardRank(b.occupant, 'bribe') + (b.occupant.role === 'peasant' ? -3 : 0)) -
             (getCardRank(a.occupant, 'bribe') + (a.occupant.role === 'peasant' ? -3 : 0)))[0];
         let bScore = getCardRank(bribeTarget.occupant, 'bribe') * 2 * prof.bribe
-            + (bribeTarget.key === 'player' ? 4 : 0) * prof.deny
+            + (isOpp(bribeTarget) ? 4 : 0) * prof.deny
             + (bribeTarget.occupant.role === 'peasant' ? -4 : 0);
         plans.push({ type: 'bribe', room: bribeTarget, score: bScore });
     }
     // C) 扩张地盘（早期权重高、后期几乎不扩张）
-    if (neutralRoom && ai.keys.length < 4) plans.push({ type: 'room', score: 6 * prof.room * pm.room });
+    if (neutralRoom && self.keys.length < 4) plans.push({ type: 'room', score: 6 * prof.room * pm.room });
     // D) 布置客房服务（早期建立稳定收入引擎）
     if (unservicedMine) plans.push({ type: 'room_service', score: 5 * prof.service * pm.service });
     // E) 兜底：洗钱攒支票
     plans.push({ type: 'check', score: 4.5 });
     // F) 现金接近上限就先洗钱落袋（阈值随性格不同）
-    if (ai.cash >= 36) plans.push({ type: 'launder', score: 100 });
-    else if (ai.cash >= prof.launderAt) plans.push({ type: 'launder', score: 9 });
+    if (self.cash >= 36) plans.push({ type: 'launder', score: 100 });
+    else if (self.cash >= prof.launderAt) plans.push({ type: 'launder', score: 9 });
 
     plans.sort((a, b) => b.score - a.score);
     let plan = plans[0];
+    const anchor = id => document.getElementById(id);
 
     if (plan.type === 'kill') {
         let victim = plan.room.occupant;
         plan.room.occupant = null;
         victim.isDead = true;
-        ai.killPile.push(victim);
-        addAICash(victim.loot);
-        let denial = plan.room.key === 'player' ? '，顺手断了你的房租财路！' : '。';
-        aiThink(`邪恶叔叔盯上了 ${plan.room.id} 号房油水丰厚的 ${victim.name}，一刀放倒、搜走 ${victim.loot}F${denial}`);
-        playEffect('kill', `+${victim.loot}F`, document.getElementById('room-' + plan.room.id));
-        if (ai.bribePile.length > 0) { exitStack.push(ai.bribePile.pop()); }
+        self.killPile.push(victim);
+        addUncleCash(self, victim.loot);
+        let denial = isOpp(plan.room) ? '，顺手断了对手的财路！' : '。';
+        aiThink(self, `${self.name}盯上了 ${plan.room.id} 号房油水丰厚的 ${victim.name}，一刀放倒、搜走 ${victim.loot}F${denial}`);
+        playEffect('kill', `+${victim.loot}F`, anchor('room-' + plan.room.id));
+        if (self.bribePile.length > 0) { exitStack.push(self.bribePile.pop()); }
     } else if (plan.type === 'bribe') {
         let t = plan.room.occupant;
         plan.room.occupant = null;
-        ai.bribePile.push(t);
-        let denial = plan.room.key === 'player' ? '，免得落到你手里。' : '，收为己用。';
-        aiThink(`邪恶叔叔抢先收买了 ${plan.room.id} 号房的 ${t.name}${denial}`);
-        playEffect('bribe', t.name, document.getElementById('room-' + plan.room.id));
+        self.bribePile.push(t);
+        let denial = isOpp(plan.room) ? '，免得落到对手手里。' : '，收为己用。';
+        aiThink(self, `${self.name}抢先收买了 ${plan.room.id} 号房的 ${t.name}${denial}`);
+        playEffect('bribe', t.name, anchor('room-' + plan.room.id));
     } else if (plan.type === 'room') {
-        neutralRoom.key = 'ai'; syncAIKeys();
-        aiThink(`旅馆暂时没什么肥羊，邪恶叔叔强占了 ${neutralRoom.id} 号中立客房，扩张地盘等下一拨客人。`);
+        neutralRoom.key = self.idx; syncAIKeys();
+        aiThink(self, `旅馆暂时没什么肥羊，${self.name}强占了 ${neutralRoom.id} 号中立客房，扩张地盘等下一拨客人。`);
     } else if (plan.type === 'room_service') {
-        setRoomService(unservicedMine, 'ai'); syncAIKeys();
-        aiThink(`邪恶叔叔给 ${unservicedMine.id} 号房布置了客房服务，坐收稳定油水。`);
+        setRoomService(unservicedMine, self.idx); syncAIKeys();
+        aiThink(self, `${self.name}给 ${unservicedMine.id} 号房布置了客房服务，坐收稳定油水。`);
     } else if (plan.type === 'launder') {
-        ai.cash = Math.max(0, ai.cash - 10);
-        ai.checks += 1;
-        aiThink("现金快到 40F 上限，邪恶叔叔把 10F 洗成支票存好，落袋为安。");
-        playEffect('launder', '', document.querySelector('.ai-wealth-box'));
+        self.cash = Math.max(0, self.cash - 10);
+        self.checks += 1;
+        aiThink(self, `现金快到 40F 上限，${self.name}把 10F 洗成支票存好，落袋为安。`);
+        playEffect('launder', '', anchor('uncle-box-' + self.idx) || document.querySelector('.ai-wealth-box'));
     } else {
-        ai.checks += 1;
-        aiThink("没有值得动手的目标，邪恶叔叔不动声色地攒了一张 10F 支票。");
+        self.checks += 1;
+        aiThink(self, `没有值得动手的目标，${self.name}不动声色地攒了一张 10F 支票。`);
     }
 
     renderUI();
     setTimeout(advanceTurn, 1100);
-}
-
-function aiExecuteAction() {
-    if (aiDeck.length === 0) {
-        aiDeck = JSON.parse(JSON.stringify(aiDiscard));
-        shuffleCards(aiDeck);
-        aiDiscard = [];
-    }
-    
-    let aiCard = aiDeck.pop();
-    if (!aiCard) {
-        logMessage("AI", "邪恶叔叔没有可用的行动牌，本次行动跳过。", "warn");
-        setTimeout(advanceTurn, 1000);
-        return;
-    }
-    aiDiscard.push(aiCard);
-    
-    let action = (actionNumber === 1) ? aiCard.top : aiCard.bottom;
-    
-    let cardNameTranslated = "未知AI";
-    if (action === "kill") cardNameTranslated = "刺杀房客 (Kill)";
-    if (action === "bribe") cardNameTranslated = "拉拢帮工 (Bribe)";
-    if (action === "check") cardNameTranslated = "获得支票 (Checks)";
-    if (action === "peasant_bribe") cardNameTranslated = "拉拢农民 (Peasant Bribe)";
-    if (action === "room") cardNameTranslated = "霸占钥匙 (Rooms)";
-    if (action === "room_service") cardNameTranslated = "布置服务 (Room Service)";
-    
-    document.getElementById('ai-drawn-card').innerText = cardNameTranslated;
-    logMessage("AI", `邪恶叔叔执行了行动：【${cardNameTranslated}】。`, "ai");
-    
-    if (action === 'kill') {
-        let targets = [];
-        rooms.forEach(r => {
-            if (r.occupant) targets.push(r);
-        });
-        
-        if (targets.length > 0) {
-            targets.sort((a, b) => {
-                if (getCardRank(b.occupant, 'kill') !== getCardRank(a.occupant, 'kill')) {
-                    return getCardRank(b.occupant, 'kill') - getCardRank(a.occupant, 'kill');
-                }
-                if (a.key === 'player' && b.key !== 'player') return -1;
-                if (b.key === 'player' && a.key !== 'player') return 1;
-                return 0;
-            });
-            
-            let victimRoom = targets[0];
-            let victim = victimRoom.occupant;
-            victimRoom.occupant = null;
-            
-            victim.isDead = true;
-            ai.killPile.push(victim);
-            
-            logMessage("AI", `邪恶叔叔刺杀了 ${victimRoom.id} 号房的 ${victim.name} (等级 ${getCardRank(victim, 'kill')})！`, "ai");
-            playEffect('kill', `${victimRoom.id}号房`, document.getElementById('room-' + victimRoom.id));
-            
-            if (ai.bribePile.length > 0) {
-                let discarded = ai.bribePile.pop();
-                exitStack.push(discarded);
-                logMessage("AI", `因为发生了谋杀，邪恶叔叔拉拢堆中的 ${discarded.name} 被恐吓而连夜逃离。`, "ai");
-            }
-        } else {
-            logMessage("AI", "旅馆内没有旅客可以被暗杀，邪恶叔叔无功而返。", "ai");
-        }
-    } 
-    else if (action === 'bribe') {
-        let targets = [];
-        rooms.forEach(r => {
-            if (r.occupant) targets.push(r);
-        });
-        
-        if (targets.length > 0) {
-            targets.sort((a, b) => {
-                if (getCardRank(a.occupant, 'bribe') !== getCardRank(b.occupant, 'bribe')) {
-                    return getCardRank(a.occupant, 'bribe') - getCardRank(b.occupant, 'bribe');
-                }
-                if (a.key === 'player' && b.key !== 'player') return -1;
-                if (b.key === 'player' && a.key !== 'player') return 1;
-                return 0;
-            });
-            
-            let bribedRoom = targets[0];
-            let targetCard = bribedRoom.occupant;
-            bribedRoom.occupant = null;
-            
-            ai.bribePile.push(targetCard);
-            logMessage("AI", `邪恶叔叔强行拉拢了 ${bribedRoom.id} 号房的 ${targetCard.name}。`, "ai");
-            playEffect('bribe', `${bribedRoom.id}号房`, document.getElementById('room-' + bribedRoom.id));
-        } else {
-            logMessage("AI", "旅馆内没有旅客可被收买。", "ai");
-        }
-    } 
-    else if (action === 'check') {
-        ai.checks += 1;
-        logMessage("AI", "邪恶叔叔直接获得了一张 10F 支票。", "ai");
-        let notaryCount = player.annexes.filter(a => a.card.annexName.includes("书房")).length;
-        if (notaryCount > 0) {
-            addPlayerCash(notaryCount);
-            logMessage("玩家", `[书房] 对手兑换支票，你顺势获得 ${notaryCount}F。`, "player");
-        }
-    }
-    else if (action === 'peasant_bribe') {
-        let peasantsInBribe = ai.bribePile.filter(c => c.role === 'peasant');
-        if (peasantsInBribe.length >= 2) {
-            let returnedCount = 0;
-            for (let i = ai.bribePile.length - 1; i >= 0; i--) {
-                if (ai.bribePile[i].role === 'peasant' && returnedCount < 2) {
-                    let p = ai.bribePile.splice(i, 1)[0];
-                    bistro.push(p);
-                    returnedCount++;
-                }
-            }
-            logMessage("AI", "邪恶叔叔解雇了 2 名杂役农民，将他们遣返回了小酒馆。", "ai");
-        } 
-        else if (bistro.length > 0) {
-            let takeCount = Math.min(2, bistro.length);
-            for (let i = 0; i < takeCount; i++) {
-                ai.bribePile.push(bistro.pop());
-            }
-            logMessage("AI", `邪恶叔叔从小酒馆雇佣了 ${takeCount} 名农民拉入他的拉拢堆。`, "ai");
-        } 
-        else {
-            let targets = [];
-            rooms.forEach(r => { if (r.occupant) targets.push(r); });
-            if (targets.length > 0) {
-                targets.sort((a, b) => getCardRank(a.occupant, 'bribe') - getCardRank(b.occupant, 'bribe'));
-                let targetCard = targets[0].occupant;
-                targets[0].occupant = null;
-                ai.bribePile.push(targetCard);
-                logMessage("AI", `酒馆缺少农民，邪恶叔叔转而拉拢了客房中的 ${targetCard.name}。`, "ai");
-            } else {
-                logMessage("AI", "没有可以交互的农民或旅客。", "ai");
-            }
-        }
-    } 
-    else if (action === 'room') {
-        let neutralRoom = rooms.find(r => r.key === 'neutral');
-        if (neutralRoom) {
-            neutralRoom.key = 'ai';
-            syncAIKeys();
-            logMessage("AI", `邪恶叔叔强行霸占了中立客房 ${neutralRoom.id} 号房间，换成了他自己的钥匙！`, "ai");
-        } else {
-            logMessage("AI", "没有空闲的中立钥匙，霸房行动落空。", "ai");
-        }
-    } 
-    else if (action === 'room_service') {
-        let myRooms = rooms.filter(r => isOpenRoom(r) && r.key === 'ai');
-        let unserviced = myRooms.find(r => !roomHasService(r));
-        if (unserviced) {
-            setRoomService(unserviced, 'ai');
-            syncAIKeys();
-            logMessage("AI", `邪恶叔叔为自己名下的 ${unserviced.id} 号房间布置了客房服务。`, "ai");
-        } else {
-            logMessage("AI", "邪恶叔叔名下所有房间都已覆盖客房服务。", "ai");
-        }
-    }
-
-    renderUI();
-    setTimeout(advanceTurn, 1000);
 }
 
 // ==========================================
@@ -1921,20 +1828,22 @@ function morningStepPolice() {
             logMessage("玩家", "您名下没有未埋的尸体，治安官查无实据。", "player");
         }
         
-        if (ai.corpses.length > 0) {
-            let corpseCount = ai.corpses.length;
-            let penalty = ai.corpses.length * 10;
-            let aiTotalVal = ai.cash + (ai.checks * 10);
-            if (aiTotalVal >= penalty) {
-                deductAITotal(penalty);
-            } else {
-                ai.cash = 0;
-                ai.checks = 0;
+        aiUncles.forEach(u => {
+            if (u.corpses.length > 0) {
+                let corpseCount = u.corpses.length;
+                let penalty = u.corpses.length * 10;
+                let uTotalVal = u.cash + (u.checks * 10);
+                if (uTotalVal >= penalty) {
+                    deductUncleTotal(u, penalty);
+                } else {
+                    u.cash = 0;
+                    u.checks = 0;
+                }
+                u.corpses.forEach(c => removedStack.push(c));
+                u.corpses = [];
+                logMessage("AI", `${u.name}被罚款并处理了 ${corpseCount} 具未埋尸体。`, "ai");
             }
-            ai.corpses.forEach(c => removedStack.push(c));
-            ai.corpses = [];
-            logMessage("AI", `邪恶叔叔被罚款并处理了 ${corpseCount} 具未埋尸体。`, "ai");
-        }
+        });
     } else {
         logMessage("系统", "本轮没有警察查夜，相安无事。", "system");
     }
@@ -1955,15 +1864,15 @@ function morningStepRent() {
     
     rooms.forEach(room => {
         if (room.occupant) {
+            let rent = 1 + (roundEffects.extraRent || 0);
             if (room.key === 'player') {
-                let rent = 1 + (roundEffects.extraRent || 0);
                 addPlayerCash(rent);
                 logMessage("玩家", `由于房客退租，您的 ${room.id} 号房间为您提供 ${rent}F 租金。`, "player");
                 playEffect('rent', `+${rent}F`, document.getElementById('room-' + room.id));
-            } else if (room.key === 'ai') {
-                let rent = 1 + (roundEffects.extraRent || 0);
-                addAICash(rent);
-                logMessage("AI", `邪恶叔叔名下 ${room.id} 号客房退租，他获得 ${rent}F。`, "ai");
+            } else if (isAIRoom(room)) {
+                let u = uncleOfRoom(room);
+                addUncleCash(u, rent);
+                logMessage("AI", `${u.name}名下 ${room.id} 号客房退租，他获得 ${rent}F。`, "ai");
             }
             
             exitStack.push(room.occupant);
@@ -1973,7 +1882,7 @@ function morningStepRent() {
 
     // 名流[实验室/外科医生]：退房时若对手仍有未埋尸体，每座实验室获得 3F
     let labCount = player.annexes.filter(a => a.card.annexName.includes("实验室")).length;
-    if (labCount > 0 && ai.corpses.length > 0) {
+    if (labCount > 0 && aiUncles.some(u => u.corpses.length > 0)) {
         addPlayerCash(3 * labCount);
         logMessage("玩家", `[实验室] 退房时对手仍有未埋尸体，你获得 ${3 * labCount}F。`, "player");
         playEffect('rent', `+${3 * labCount}F`, document.querySelector('.player-wealth-box'));
@@ -1981,8 +1890,8 @@ function morningStepRent() {
 
     if (roundEffects.pickpockets) {
         player.cash = Math.max(0, player.cash - 2);
-        ai.cash = Math.max(0, ai.cash - 2);
-        logMessage("事件", "扒手横行：双方各损失 2F 现金。", "warn");
+        aiUncles.forEach(u => u.cash = Math.max(0, u.cash - 2));
+        logMessage("事件", "扒手横行：所有人各损失 2F 现金。", "warn");
         playEffect('object');
     }
     
@@ -2057,8 +1966,8 @@ function checkGameEndOrNextRound() {
     }
     
     roundNum++;
-    firstPlayer = (firstPlayer === 'player') ? 'ai' : 'player';
-    logMessage("系统", `--- 第 ${roundNum} 轮即将开始，本轮第一玩家换人！ ---`, "system");
+    firstActorIdx = (firstActorIdx + 1) % playerCount; // 主理人轮换到下一座位
+    logMessage("系统", `--- 第 ${roundNum} 轮即将开始，主理人换人！ ---`, "system");
     runPhaseWelcome();
 }
 
@@ -2087,18 +1996,14 @@ function triggerGameOver() {
         player.corpses = [];
     }
     
-    if (ai.corpses.length > 0) {
-        let penalty = ai.corpses.length * 10;
-        let total = ai.cash + ai.checks * 10;
-        if (total >= penalty) {
-            deductAITotal(penalty);
-        } else {
-            ai.cash = 0;
-            ai.checks = 0;
+    aiUncles.forEach(u => {
+        if (u.corpses && u.corpses.length > 0) {
+            let penalty = u.corpses.length * 10;
+            if (u.cash + u.checks * 10 >= penalty) deductUncleTotal(u, penalty);
+            else { u.cash = 0; u.checks = 0; }
+            u.corpses.forEach(c => removedStack.push(c)); u.corpses = [];
         }
-        ai.corpses.forEach(c => removedStack.push(c));
-        ai.corpses = [];
-    }
+    });
     
     // 1. 玩家资产计算
     let playerTotal = player.cash + player.checks * 10;
@@ -2155,71 +2060,44 @@ function triggerGameOver() {
         }
     });
     
-    // 2. AI 资产计算
-    let aiTotal = ai.cash + ai.checks * 10;
-    let aiBribeBonus = 0;
-    let aiKillBonus = 0;
-    
-    if (difficulty === 'scheming' || difficulty === 'murderous') {
-        aiBribeBonus = ai.bribePile.length;
-    }
-    
-    if (difficulty === 'murderous') {
-        ai.killPile.forEach(c => {
-            aiKillBonus += getCardRank(c, 'kill');
-        });
-    }
-    
-    aiTotal += (aiBribeBonus + aiKillBonus);
-    
-    document.getElementById('score-player-cash').innerText = `${player.cash} F`;
-    document.getElementById('score-player-checks').innerText = `${player.checks * 10} F`;
-    document.getElementById('score-ai-cash').innerText = `${ai.cash} F`;
-    document.getElementById('score-ai-checks').innerText = `${ai.checks * 10} F`;
-    
-    if (difficulty === 'silly' || difficulty === 'mastermind' || difficulty === 'ml') {
-        document.getElementById('score-player-bribe-bonus').innerText = "--";
-        document.getElementById('score-ai-bribe-bonus').innerText = "--";
-        document.getElementById('score-player-kill-bonus').innerText = "--";
-        document.getElementById('score-ai-kill-bonus').innerText = "--";
-    } else {
-        document.getElementById('score-player-bribe-bonus').innerText = "0 F";
-        document.getElementById('score-ai-bribe-bonus').innerText = `${aiBribeBonus} F`;
-        
-        if (difficulty === 'murderous') {
-            document.getElementById('score-player-kill-bonus').innerText = "0 F";
-            document.getElementById('score-ai-kill-bonus').innerText = `${aiKillBonus} F`;
-        } else {
-            document.getElementById('score-player-kill-bonus').innerText = "--";
-            document.getElementById('score-ai-kill-bonus').innerText = "--";
+    // 2. 各 AI 叔叔资产（按难度的计分性格——越高级的叔叔越会把"战利品堆"折算成分数，结算越强）
+    //    所有难度都用同一套策略引擎(aiStrategicAction)行动、都会累积拉拢/刺杀堆，
+    //    因此这里必须为「会计分的难度」全部计入，避免策略/学习叔叔白拿堆却 0 计分而被低估。
+    //    silly: 只算现金+支票  ·  scheming: +拉拢堆  ·  murderous/mastermind/ml: +拉拢堆 +刺杀等级
+    function uncleTotal(u) {
+        let t = u.cash + u.checks * 10;
+        if (u.difficulty !== 'silly') t += u.bribePile.length;
+        if (u.difficulty === 'murderous' || u.difficulty === 'mastermind' || u.difficulty === 'ml') {
+            u.killPile.forEach(c => t += getCardRank(c, 'kill'));
         }
+        return t;
     }
-    
-    document.getElementById('score-player-total').innerText = `${playerTotal} F`;
-    document.getElementById('score-ai-total').innerText = `${aiTotal} F`;
-    
-    let verdict = "";
-    let playerWon = null;
-    if (playerTotal > aiTotal) {
-        verdict = "恭喜！您在财富战中胜过叔叔，成为了当地最令人侧目的黑店之王！👑";
-        playerWon = true;
-    } else if (playerTotal < aiTotal) {
-        verdict = "很遗憾，邪恶叔叔的黑心资产盖过了您。您破产退出了！💀";
-        playerWon = false;
+    // 平局判定（原版：埋尸最多者胜）。本作抽象 AI 不建别馆、不埋尸，其"处理掉的尸体数"等价物即刺杀堆，
+    // 人类则用别馆下已埋的尸体数——两者都是"成功处理的尸体数"，作为统一的平局指标。
+    let playerBuried = player.annexes.reduce((s, a) => s + a.buried.length, 0);
+    let standings = [{ name: '您', total: playerTotal, isHuman: true, tiebreak: playerBuried }];
+    aiUncles.forEach(u => standings.push({ name: u.name, total: uncleTotal(u), isHuman: false, tiebreak: u.killPile.length }));
+    standings.sort((a, b) => (b.total - a.total) || (b.tiebreak - a.tiebreak));
+    let winner = standings[0];
+    let playerWon = winner.isHuman;
+
+    // 动态 N 列计分板
+    let header = `<div class="score-row header"><span>排名 / 玩家</span><span>总资产</span></div>`;
+    let rowsHtml = standings.map((s, i) =>
+        `<div class="score-row ${s.isHuman ? 'you' : ''} ${i === 0 ? 'total' : ''}">
+            <span>${i + 1}. ${s.name}${s.isHuman ? '（你）' : ''}${i === 0 ? ' 👑' : ''}</span>
+            <span>${s.total} F</span>
+        </div>`).join('');
+    let board = document.querySelector('#gameover-modal .score-board');
+    if (board) board.innerHTML = header + rowsHtml;
+
+    let verdict;
+    if (playerWon) {
+        verdict = "恭喜！您财富登顶，成为当地最令人侧目的黑店之王！👑";
     } else {
-        let playerBuriedCount = 0;
-        player.annexes.forEach(a => playerBuriedCount += a.buried.length);
-        let aiBuriedCount = ai.killPile.length;
-        
-        if (playerBuriedCount > aiBuriedCount) {
-            verdict = "法郎打平！但由于您掩埋的尸体数量更多，更少露出破绽，您获得了胜利！";
-        } else if (playerBuriedCount < aiBuriedCount) {
-            verdict = "法郎打平！但由于邪恶叔叔掩埋的尸体更多，您略逊一筹！";
-        } else {
-            verdict = "旗鼓相当的对手！你们完全打平了，看来你们应该重新对决一局！";
-        }
+        verdict = `很遗憾，${winner.name} 以 ${winner.total}F 的资产盖过了所有人，您未能登顶。💀`;
     }
-    
+
     document.getElementById('game-verdict').innerText = verdict;
     document.getElementById('gameover-modal').classList.remove('hidden');
 
@@ -2235,18 +2113,19 @@ function addPlayerCash(amount) {
     player.cash = Math.min(40, player.cash + amount);
 }
 
-function addAICash(amount) {
-    // 名流[保险库/银行家]：对手现金溢出 40F 上限的部分归你
+function addUncleCash(u, amount) {
+    // 名流[保险库/银行家]：任一对手现金溢出 40F 上限的部分归你
     let hasBanker = player.annexes.some(a => a.card.annexName.includes("保险库"));
-    let room = 40 - ai.cash;
+    let room = 40 - u.cash;
     let gained = Math.max(0, Math.min(amount, room));
-    ai.cash += gained;
+    u.cash += gained;
     let overflow = amount - gained;
     if (hasBanker && overflow > 0) {
         addPlayerCash(overflow);
-        logMessage("玩家", `[保险库] 截获了对手溢出 40F 上限的 ${overflow}F！`, "player");
+        logMessage("玩家", `[保险库] 截获了${u.name}溢出 40F 上限的 ${overflow}F！`, "player");
     }
 }
+function addAICash(amount) { addUncleCash(ai, amount); }
 
 // 把尸体塞入别馆下；双胞胎额外塞一张占位，使其占 2 个埋尸位、计为 2 具尸体
 function tuckCorpse(slot, corpse) {
@@ -2265,8 +2144,10 @@ function awardBuryLoot(corpse, annexName, autoBishop) {
         let mine = Math.ceil(loot / 2);
         let theirs = loot - mine;
         addPlayerCash(mine);
-        ai.cash = Math.min(40, ai.cash + theirs);
-        logMessage("玩家", `${prefix}大胡子女士被埋入 ${annexName}，与对手平分油水：你得 ${mine}F，叔叔得 ${theirs}F。`, "player");
+        // 原版：须将另一半分给「你指定的另一名玩家」——最优策略是分给最弱的对手（现金最少的叔叔）
+        let receiver = aiUncles.slice().sort((a, b) => a.cash - b.cash)[0] || ai;
+        addUncleCash(receiver, theirs); // 走统一入账：若你有[保险库]，对方溢出 40F 的部分仍被你截获
+        logMessage("玩家", `${prefix}大胡子女士被埋入 ${annexName}，与对手平分油水：你得 ${mine}F，${receiver.name} 得 ${theirs}F。`, "player");
     } else {
         addPlayerCash(loot);
         logMessage("玩家", `${prefix}将 ${corpse.name} 的尸体埋入 ${annexName} 下，掠夺 ${loot}F！`, "player");
@@ -2286,17 +2167,12 @@ function deductPlayerTotal(amount) {
     player.cash = Math.max(0, player.cash - amount);
 }
 
-function deductAITotal(amount) {
-    while (amount >= 10 && ai.checks > 0) {
-        ai.checks -= 1;
-        amount -= 10;
-    }
-    if (amount > ai.cash && ai.checks > 0) {
-        ai.checks -= 1;
-        ai.cash += 10;
-    }
-    ai.cash = Math.max(0, ai.cash - amount);
+function deductUncleTotal(u, amount) {
+    while (amount >= 10 && u.checks > 0) { u.checks -= 1; amount -= 10; }
+    if (amount > u.cash && u.checks > 0) { u.checks -= 1; u.cash += 10; }
+    u.cash = Math.max(0, u.cash - amount);
 }
+function deductAITotal(amount) { deductUncleTotal(ai, amount); }
 
 // ==========================================
 // 界面更新渲染 (UI Renderer)
@@ -2313,7 +2189,39 @@ function updateHeaderStatus(phaseText, statusType) {
     document.getElementById('current-round').innerText = `第 ${roundNum} 轮`;
     document.getElementById('current-season').innerText = (seasonNum === 1) ? '第一季度' : '第二季度';
     const hostBadge = document.getElementById('info-host');
-    if (hostBadge) hostBadge.innerText = `主理人: ${firstPlayer === 'player' ? '玩家' : '邪恶叔叔'}`;
+    if (hostBadge) hostBadge.innerText = `主理人: ${actorName(hostActor())}`;
+}
+
+function shortDiffName(d) {
+    return ({ silly: '傻', scheming: '阴险', murderous: '嗜血', mastermind: '策略', ml: 'ML' })[d] || d;
+}
+function renderRailMarkers() {
+    const rail = document.querySelector('.rail-line');
+    if (!rail) return;
+    rail.querySelectorAll('.marker.extra-uncle').forEach(e => e.remove());
+    for (let i = 1; i < aiUncles.length; i++) {
+        const u = aiUncles[i];
+        const m = document.createElement('div');
+        m.className = 'marker ai-color extra-uncle';
+        m.title = u.name;
+        m.innerText = 'U' + (i + 1);
+        m.style.left = `${(u.cash / 40) * 90}%`;
+        rail.appendChild(m);
+    }
+}
+function renderExtraUncles() {
+    let box = document.getElementById('extra-uncles');
+    if (!box) return;
+    if (aiUncles.length <= 1) { box.innerHTML = ''; box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    box.innerHTML = `<h4><i data-lucide="users"></i> 其他叔叔</h4>` + aiUncles.slice(1).map(u => `
+        <div class="uncle-card" id="uncle-box-${u.idx}">
+            <div class="uncle-head"><span class="uncle-name">${u.name}</span><span class="uncle-diff">${shortDiffName(u.difficulty)}</span></div>
+            <div class="uncle-stats">
+                <span>💰 ${u.cash}F</span><span>🎫 ${u.checks}×10F</span>
+                <span>🏠 ${u.keys.length}间</span><span>🔪 ${u.killPile.length}</span><span>🪙 ${u.bribePile.length}</span>
+            </div>
+        </div>`).join('');
 }
 
 function renderUI() {
@@ -2321,12 +2229,14 @@ function renderUI() {
     document.getElementById('player-checks').innerText = `10F支票 x${player.checks}`;
     document.getElementById('ai-cash').innerText = ai.cash;
     document.getElementById('ai-checks').innerText = `10F支票 x${ai.checks}`;
-    
-    let playerPct = (player.cash / 40) * 90;
-    let aiPct = (ai.cash / 40) * 90;
-    document.getElementById('player-marker').style.left = `${playerPct}%`;
-    document.getElementById('ai-marker').style.left = `${aiPct}%`;
-    
+    let aiLabel = document.querySelector('.ai-wealth-box .wealth-label');
+    if (aiLabel) aiLabel.innerText = `${ai.name}（${shortDiffName(ai.difficulty)}）:`;
+
+    document.getElementById('player-marker').style.left = `${(player.cash / 40) * 90}%`;
+    document.getElementById('ai-marker').style.left = `${(ai.cash / 40) * 90}%`;
+    renderRailMarkers();
+    renderExtraUncles();
+
     const roomsGrid = document.getElementById('inn-rooms-grid');
     roomsGrid.innerHTML = '';
     
@@ -2336,7 +2246,7 @@ function renderUI() {
         let openClass = isOpenRoom(room) ? 'open' : 'closed-room';
         doorDiv.className = `room-door ${openClass} ${room.occupant ? 'occupied' : ''}`;
         
-        if (currentPhase === 'welcome' && pendingWelcomeCard && firstPlayer === 'player' && isOpenRoom(room) && !room.occupant) {
+        if (currentPhase === 'welcome' && pendingWelcomeCard && isHumanHost() && isOpenRoom(room) && !room.occupant) {
             doorDiv.classList.add('clickable', 'highlight');
             doorDiv.onclick = () => handleWelcomeRoomSelect(room.id);
         } else if (pendingAction.type === 'bribe' && room.occupant) {
@@ -2350,12 +2260,12 @@ function renderUI() {
             doorDiv.onclick = () => handleKillSelect(room.occupant);
         }
         
-        let keyClass = `key-${room.key}`;
-        let keyLetter = room.key === 'player' ? 'P' : (room.key === 'ai' ? 'U' : (room.key === 'neutral' ? 'N' : 'X'));
-        
+        let keyClass = isHumanRoom(room) ? 'key-player' : (isAIRoom(room) ? 'key-ai' : `key-${room.key}`);
+        let keyLetter = isHumanRoom(room) ? 'P' : (isAIRoom(room) ? 'U' + (room.key + 1) : (room.key === 'neutral' ? 'N' : 'X'));
+
         let markerHtml = `<div class="room-key-icon ${keyClass}">${keyLetter}</div>`;
         if (roomHasService(room)) {
-            let serviceClass = room.serviceOwner === 'player' ? 'service-player' : (room.serviceOwner === 'ai' ? 'service-ai' : '');
+            let serviceClass = room.serviceOwner === 'player' ? 'service-player' : (typeof room.serviceOwner === 'number' ? 'service-ai' : '');
             markerHtml += `<div class="room-service-icon service-icon ${serviceClass}">S</div>`;
         }
         
@@ -2563,7 +2473,10 @@ function renderUI() {
     syncAIKeys();
     document.getElementById('ai-stat-rooms').innerText = `${ai.keys.length} 间`;
     document.getElementById('ai-stat-corpses').innerText = `${ai.corpses.length} 具`;
-    document.getElementById('ai-deck-count').innerText = aiDeck.length;
+    let aiTitle = document.getElementById('ai-status-title');
+    if (aiTitle) aiTitle.innerText = `${ai.name} 状态` + (playerCount > 2 ? '（叔叔①）' : '');
+    let aiStrat = document.getElementById('ai-strategy-label');
+    if (aiStrat) aiStrat.innerText = DIFF_LABELS[ai.difficulty] || ai.difficulty;
     
     document.getElementById('traveler-deck-count').innerText = travelerDeck.length;
     const deckBack = document.getElementById('traveler-deck-back');
@@ -2782,7 +2695,7 @@ function playObject(instanceId) {
         objectEffects.returnHelpersFor.bury = true;
     } else if (obj.effect === 'catchup') {
         let playerBuried = player.annexes.reduce((s, a) => s + a.buried.length, 0);
-        let aiBuried = ai.killPile.length;
+        let aiBuried = Math.max(...aiUncles.map(u => u.killPile.length)); // 与「埋尸最多的对手」比较
         if (playerBuried < aiBuried) {
             addPlayerCash(6);
             logMessage("道具", "[告解室] 你埋的尸体比对手少，立刻获得 6F。", "player");

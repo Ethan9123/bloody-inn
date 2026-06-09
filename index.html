@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <!-- 引入Lucide图标 -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="style.css?v=5">
+    <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
     <div id="setup-screen" class="screen">
@@ -26,14 +26,23 @@
                     </div>
                 </div>
                 <div class="setup-group">
-                    <label>选择 AI 叔叔难度</label>
+                    <label>玩家人数（你 + AI 叔叔，座位随机）</label>
                     <div class="btn-toggle-group">
-                        <button id="btn-diff-silly" class="btn btn-toggle active" onclick="setDifficulty('silly')" title="按固定行动卡行动，结算只比现金支票">傻叔叔 (只看钱)</button>
-                        <button id="btn-diff-scheming" class="btn btn-toggle" onclick="setDifficulty('scheming')" title="固定行动卡，结算时拉拢堆每张额外计分">阴险叔叔 (+拉拢分)</button>
-                        <button id="btn-diff-murderous" class="btn btn-toggle" onclick="setDifficulty('murderous')" title="固定行动卡，结算时拉拢与刺杀等级都额外计分">嗜血叔叔 (+刺杀等级分)</button>
-                        <button id="btn-diff-mastermind" class="btn btn-toggle" onclick="setDifficulty('mastermind')" title="像真人一样审时度势：抢劫高价旅客、断你财路、扩张地盘，凭真本事比拼财富">策略叔叔 (真人级)</button>
-                        <button id="btn-diff-ml" class="btn btn-toggle" onclick="setDifficulty('ml')" title="权重由自我对弈+进化策略(ES)离线学习而来：更重拆台、更早存钱、后期狠抢">学习叔叔 (ML调优)</button>
+                        <button id="btn-pc-2" class="btn btn-toggle active" onclick="setPlayerCount(2)">2 人 (你+1)</button>
+                        <button id="btn-pc-3" class="btn btn-toggle" onclick="setPlayerCount(3)">3 人 (你+2)</button>
+                        <button id="btn-pc-4" class="btn btn-toggle" onclick="setPlayerCount(4)">4 人 (你+3)</button>
                     </div>
+                </div>
+                <div class="setup-group">
+                    <label>叔叔①难度</label>
+                    <div class="btn-toggle-group">
+                        <button id="btn-diff-silly" class="btn btn-toggle active" onclick="setDifficulty('silly')" title="只盯着钱、性格保守的策略AI">傻叔叔 (只看钱)</button>
+                        <button id="btn-diff-scheming" class="btn btn-toggle" onclick="setDifficulty('scheming')" title="爱拉拢拆台，结算时拉拢堆额外计分">阴险叔叔 (+拉拢分)</button>
+                        <button id="btn-diff-murderous" class="btn btn-toggle" onclick="setDifficulty('murderous')" title="嗜杀，结算时刺杀等级额外计分">嗜血叔叔 (+刺杀分)</button>
+                        <button id="btn-diff-mastermind" class="btn btn-toggle" onclick="setDifficulty('mastermind')" title="审时度势：抢劫高价旅客、断你财路、扩张地盘">策略叔叔 (真人级)</button>
+                        <button id="btn-diff-ml" class="btn btn-toggle" onclick="setDifficulty('ml')" title="自我对弈+进化策略学到的权重：更重拆台、更早存钱、后期狠抢">学习叔叔 (ML调优)</button>
+                    </div>
+                    <div id="extra-ai-diffs" class="extra-ai-diffs"></div>
                 </div>
                 <div class="setup-group">
                     <label>选择扩展模块（可多选，默认全部关闭）</label>
@@ -197,7 +206,7 @@
 
                 <!-- 邪恶叔叔 AI 状态 -->
                 <div class="ai-status-box glass">
-                    <h3><i data-lucide="bot"></i> 邪恶叔叔 AI 状态</h3>
+                    <h3><i data-lucide="bot"></i> <span id="ai-status-title">邪恶叔叔 AI 状态</span></h3>
                     <div class="ai-stats-grid">
                         <div class="ai-stat-card">
                             <span class="stat-name">拉拢堆 (Bribe)</span>
@@ -217,9 +226,9 @@
                         </div>
                     </div>
                     <div class="ai-action-deck-info">
-                        <span>AI行动牌堆: <strong id="ai-deck-count">14</strong> 张</span>
+                        <span>策略难度: <strong id="ai-strategy-label">策略</strong></span>
                         <div class="ai-current-card-view">
-                            <span>当前翻开: </span>
+                            <span>当前决策: </span>
                             <span class="ai-card-name" id="ai-drawn-card">无</span>
                         </div>
                         <div class="ai-current-card-view">
@@ -228,6 +237,9 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- 多人局：其他 AI 叔叔（3/4 人局时显示） -->
+                <div class="opponents-box glass hidden" id="extra-uncles"></div>
 
                 <!-- 游戏公共牌库状态 -->
                 <div class="deck-status-box glass">
@@ -399,6 +411,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=6"></script>
+    <script src="script.js?v=7"></script>
 </body>
 </html>
