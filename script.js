@@ -784,6 +784,16 @@ function resetPendingAction() {
     document.querySelectorAll('.annex-slot-container').forEach(a => a.classList.remove('selected', 'highlight'));
 }
 
+function isAwaitingPayment() {
+    return pendingAction.cost !== undefined;
+}
+
+function warnIfAwaitingPayment() {
+    if (!isAwaitingPayment()) return false;
+    logMessage("系统", "已进入支付帮工阶段，请先完成或取消当前行动。", "warn");
+    return true;
+}
+
 function cancelPendingAction() {
     resetPendingAction();
     logMessage("玩家", "取消了当前行动。", "player");
@@ -845,6 +855,8 @@ function renderTargetConfirmArea() {
 }
 
 function confirmTargets() {
+    if (isAwaitingPayment()) return;
+
     let totalCost = 0;
     let type = pendingAction.type;
     
@@ -892,6 +904,24 @@ function confirmTargets() {
 }
 
 function finishPlayerAction() {
+    if (isAwaitingPayment() && pendingAction.selectedHelpers.length < pendingAction.cost) {
+        logMessage("系统", "尚未选择足够的帮工牌，不能执行行动。", "warn");
+        return;
+    }
+
+    if (pendingAction.type === 'bury' && pendingAction.target && pendingAction.target.annexIndex !== undefined) {
+        let targetSlot = player.annexes[pendingAction.target.annexIndex];
+        if (!targetSlot) {
+            logMessage("系统", "目标别馆不存在，请取消后重新选择埋尸位置。", "warn");
+            return;
+        }
+        let maxBurial = getAnnexCapacity(targetSlot.card);
+        if (targetSlot.buried.length >= maxBurial) {
+            logMessage("系统", "目标别馆容量已满，请取消后重新选择埋尸位置。", "warn");
+            return;
+        }
+    }
+
     // 扣除打出的帮工
     let hasChapelForBury = pendingAction.type === 'bury' && player.annexes.some(a => a.card.annexName.includes("小教堂"));
     let hasCompanionNook = pendingAction.type === 'bribe' && player.annexes.some(a => a.card.annexName.includes("密室"));
@@ -1129,7 +1159,7 @@ function initiateBribe() {
 }
 
 function handleBribeSelect(card) {
-    if (pendingAction.type !== 'bribe') return;
+    if (pendingAction.type !== 'bribe' || warnIfAwaitingPayment()) return;
 
     let hasShopkeeper = player.annexes.some(a => a.card.annexName.includes("商铺"));
     let hasBrewer = player.annexes.some(a => a.card.annexName.includes("啤酒厂"));
@@ -1185,7 +1215,7 @@ function initiateBuild() {
 }
 
 function handleBuildSelect(card) {
-    if (pendingAction.type !== 'build') return;
+    if (pendingAction.type !== 'build' || warnIfAwaitingPayment()) return;
     if (card.role === 'peasant' || card.role === 'police') {
         logMessage("系统", "农民和警察无法被改建为别馆！", "warn");
         return;
@@ -1219,7 +1249,7 @@ function initiateKill() {
 }
 
 function handleKillSelect(card) {
-    if (pendingAction.type !== 'kill') return;
+    if (pendingAction.type !== 'kill' || warnIfAwaitingPayment()) return;
     
     let hasButcher = player.annexes.some(a => a.card.annexName.includes("肉铺"));
     if (hasButcher && card.role !== 'peasant') {
@@ -1263,7 +1293,7 @@ function initiateBury() {
 }
 
 function handleCorpseSelect(corpseCard) {
-    if (pendingAction.type !== 'bury') return;
+    if (pendingAction.type !== 'bury' || warnIfAwaitingPayment()) return;
     
     let hasArchbishop = player.annexes.some(a => a.card.annexName.includes("地下墓室"));
     if (hasArchbishop) {
@@ -1291,7 +1321,15 @@ function handleCorpseSelect(corpseCard) {
 }
 
 function handleAnnexSlotSelect(index) {
-    if (pendingAction.type !== 'bury' || !pendingAction.targetCorpse) return;
+    if (pendingAction.type !== 'bury' || !pendingAction.targetCorpse || warnIfAwaitingPayment()) return;
+
+    let targetSlot = player.annexes[index];
+    if (!targetSlot) return;
+    let maxBurial = getAnnexCapacity(targetSlot.card);
+    if (targetSlot.buried.length >= maxBurial) {
+        logMessage("系统", "这个别馆已经没有空余埋尸容量。", "warn");
+        return;
+    }
     
     let corpse = pendingAction.targetCorpse;
     pendingAction.targets = [corpse];
@@ -1451,6 +1489,11 @@ function aiExecuteAction() {
     }
     
     let aiCard = aiDeck.pop();
+    if (!aiCard) {
+        logMessage("AI", "邪恶叔叔没有可用的行动牌，本次行动跳过。", "warn");
+        setTimeout(advanceTurn, 1000);
+        return;
+    }
     aiDiscard.push(aiCard);
     
     let action = (actionNumber === 1) ? aiCard.top : aiCard.bottom;
@@ -1550,10 +1593,12 @@ function aiExecuteAction() {
             }
             logMessage("AI", "邪恶叔叔解雇了 2 名杂役农民，将他们遣返回了小酒馆。", "ai");
         } 
-        else if (bistro.length >= 2) {
-            ai.bribePile.push(bistro.pop());
-            ai.bribePile.push(bistro.pop());
-            logMessage("AI", "邪恶叔叔从小酒馆雇佣了 2 名农民拉入他的拉拢堆。", "ai");
+        else if (bistro.length > 0) {
+            let takeCount = Math.min(2, bistro.length);
+            for (let i = 0; i < takeCount; i++) {
+                ai.bribePile.push(bistro.pop());
+            }
+            logMessage("AI", `邪恶叔叔从小酒馆雇佣了 ${takeCount} 名农民拉入他的拉拢堆。`, "ai");
         } 
         else {
             let targets = [];
@@ -1636,15 +1681,18 @@ function morningStepPolice() {
             let playerTotalVal = player.cash + (player.checks * 10);
             if (playerTotalVal >= penalty) {
                 deductPlayerTotal(penalty);
-                logMessage("玩家", `你支付了 ${penalty}F 封口费。全部 ${player.corpses.length} 具尸体被强行弃入离店堆。`, "player");
+                logMessage("玩家", `你支付了 ${penalty}F 封口费。${exposedCount} 具暴露尸体被强行移出本局。`, "player");
             } else {
                 player.cash = 0;
                 player.checks = 0;
-                logMessage("玩家", "你付不起封口费，所有的赃款被没收！尸体被直接拖走。", "warn");
+                logMessage("玩家", "你付不起封口费，所有的赃款被没收！暴露尸体被直接拖走。", "warn");
             }
             let protectedCorpses = protectedCount > 0 ? player.corpses.slice(0, protectedCount) : [];
             player.corpses.slice(protectedCount).forEach(c => removedStack.push(c));
             player.corpses = protectedCorpses;
+            if (protectedCount > 0) {
+                logMessage("玩家", `${protectedCount} 具尸体受诊所/道具保护，留在未埋尸体堆中。`, "player");
+            }
         } else {
             logMessage("玩家", "您名下没有未埋的尸体，治安官查无实据。", "player");
         }
