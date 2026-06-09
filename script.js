@@ -1143,18 +1143,30 @@ function initiateBribe() {
 
 function handleBribeSelect(card) {
     if (pendingAction.type !== 'bribe') return;
-    
+
     let hasShopkeeper = player.annexes.some(a => a.card.annexName.includes("商铺"));
     let hasBrewer = player.annexes.some(a => a.card.annexName.includes("啤酒厂"));
-    
-    if ((hasShopkeeper && card.role !== 'peasant') || (hasBrewer && card.role === 'peasant')) {
+
+    if (card.role === 'peasant') {
+        // 原版规则：一次「拉拢」从小酒馆带走 2 名农民（无需支付帮工牌）；拥有[啤酒厂]时最多 4 名
+        let maxTake = hasBrewer ? 4 : 2;
+        let take = bistro.slice(0, maxTake);
+        if (take.length === 0) {
+            logMessage("系统", "小酒馆里没有农民可以收买。", "warn");
+            cancelPendingAction();
+            return;
+        }
+        pendingAction.targets = take;
+        logMessage("玩家", `从小酒馆一次性收买了 ${take.length} 名农民（无需支付帮工牌）。`, "player");
+        finishPlayerAction();
+    } else if (hasShopkeeper) {
         toggleSelectedTarget(card);
     } else {
         pendingAction.targets = [card];
         let repCount = player.annexes.filter(a => a.card.annexName.includes("会客厅")).length;
         let actualCost = Math.max(0, getCardRank(card, 'bribe') - repCount);
         logMessage("玩家", `已选中拉拢目标：${card.name} (等级 ${getCardRank(card, 'bribe')})。需要支付 ${actualCost} 张帮工牌。`, "player");
-        
+
         if (actualCost === 0) {
             finishPlayerAction();
         } else {
@@ -2263,7 +2275,7 @@ function renderUI() {
             peasantBtn.className = 'btn btn-secondary';
             peasantBtn.style.padding = '4px 8px';
             peasantBtn.style.fontSize = '11px';
-            peasantBtn.innerText = `收买农民 (+1F)`;
+            peasantBtn.innerText = `收买农民 (一次 2 名)`;
             
             // 是否已经被选中
             if (pendingAction.targets.some(t => t.role === 'peasant')) {
