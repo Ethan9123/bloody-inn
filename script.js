@@ -866,7 +866,7 @@ function runActionStep() {
         document.getElementById('action-box-title').innerText = "邪恶叔叔正在执行行动...";
         document.getElementById('action-box-desc').innerText = "等待叔叔翻开他的行动卡片...";
         enableMainActionButtons(false);
-        setTimeout(difficulty === 'mastermind' ? aiStrategicAction : aiExecuteAction, 1200);
+        setTimeout(aiStrategicAction, 1200); // 所有难度都用策略引擎（按性格与阶段加权），不再翻固定行动卡
     }
 }
 
@@ -1598,38 +1598,59 @@ function aiThink(text) {
     logMessage("AI", text, "ai");
 }
 
+// 全局观念：早/中/晚阶段——早期重扩张与稳定收入，后期重抢劫与落袋
+function getRoundPhase() {
+    if (seasonNum >= 2) return 'late';
+    return roundNum <= 2 ? 'early' : 'mid';
+}
+// 每档难度的策略性格（同一套引擎、不同权重，使 4 档各有性格又都有大局观）
+const AI_PROFILES = {
+    silly:      { kill: 1.0,  bribe: 0.2, room: 0.7, service: 0.7, deny: 0.2, launderAt: 36 },
+    scheming:   { kill: 0.9,  bribe: 1.2, room: 0.9, service: 0.9, deny: 0.7, launderAt: 34 },
+    murderous:  { kill: 1.3,  bribe: 0.5, room: 0.7, service: 0.7, deny: 0.9, launderAt: 34 },
+    mastermind: { kill: 1.15, bribe: 1.0, room: 1.0, service: 1.0, deny: 1.0, launderAt: 32 },
+};
+const PHASE_MOD = {
+    early: { kill: 0.75, room: 1.8,  service: 1.7 },
+    mid:   { kill: 1.0,  room: 1.0,  service: 1.0 },
+    late:  { kill: 1.35, room: 0.25, service: 0.4 },
+};
+
 function aiStrategicAction() {
+    let prof = AI_PROFILES[difficulty] || AI_PROFILES.mastermind;
+    let pm = PHASE_MOD[getRoundPhase()];
     let occupied = rooms.filter(r => isOpenRoom(r) && r.occupant);
     let neutralRoom = rooms.find(r => r.key === 'neutral');
     let myOpenRooms = rooms.filter(r => isOpenRoom(r) && r.key === 'ai');
     let unservicedMine = myOpenRooms.find(r => !roomHasService(r));
 
-    // 为每个可选行动估一个收益分，再挑最高的执行
+    // 为每个可选行动按「性格 × 阶段」估收益分，再挑最高的执行
     let plans = [];
 
     if (occupied.length > 0) {
-        // A) 刺杀并洗劫：油水越高越值得，住在你房里的额外加权（断你财路）
-        let killTarget = occupied.slice().sort((a, b) =>
-            (b.occupant.loot + (b.key === 'player' ? 6 : 0)) - (a.occupant.loot + (a.key === 'player' ? 6 : 0))
-        )[0];
-        plans.push({ type: 'kill', room: killTarget, score: killTarget.occupant.loot + (killTarget.key === 'player' ? 6 : 0) });
+        // A) 刺杀并洗劫：油水越高越值得，住你房里额外加权（断你财路）
+        let killTarget = occupied.slice().sort((a, b) => b.occupant.loot - a.occupant.loot)[0];
+        let kScore = killTarget.occupant.loot * prof.kill * pm.kill + (killTarget.key === 'player' ? 6 : 0) * prof.deny;
+        plans.push({ type: 'kill', room: killTarget, score: kScore });
 
         // B) 拉拢：拆你的台、攒拉拢堆，偏好高等级、你房间、非农民
         let bribeTarget = occupied.slice().sort((a, b) =>
-            (getCardRank(b.occupant, 'bribe') * 2 + (b.key === 'player' ? 4 : 0) + (b.occupant.role === 'peasant' ? -3 : 0)) -
-            (getCardRank(a.occupant, 'bribe') * 2 + (a.key === 'player' ? 4 : 0) + (a.occupant.role === 'peasant' ? -3 : 0))
-        )[0];
-        plans.push({ type: 'bribe', room: bribeTarget, score: getCardRank(bribeTarget.occupant, 'bribe') * 2 + (bribeTarget.key === 'player' ? 4 : 0) });
+            (getCardRank(b.occupant, 'bribe') + (b.occupant.role === 'peasant' ? -3 : 0)) -
+            (getCardRank(a.occupant, 'bribe') + (a.occupant.role === 'peasant' ? -3 : 0)))[0];
+        let bScore = getCardRank(bribeTarget.occupant, 'bribe') * 2 * prof.bribe
+            + (bribeTarget.key === 'player' ? 4 : 0) * prof.deny
+            + (bribeTarget.occupant.role === 'peasant' ? -4 : 0);
+        plans.push({ type: 'bribe', room: bribeTarget, score: bScore });
     }
-    // C) 扩张地盘：早期、还有中立房、自己房间不算多时
-    if (neutralRoom && ai.keys.length < 4 && roundNum <= 4) plans.push({ type: 'room', score: 6 });
-    // D) 布置客房服务：有自家空房没服务时的长期收入
-    if (unservicedMine) plans.push({ type: 'room_service', score: 4 });
+    // C) 扩张地盘（早期权重高、后期几乎不扩张）
+    if (neutralRoom && ai.keys.length < 4) plans.push({ type: 'room', score: 6 * prof.room * pm.room });
+    // D) 布置客房服务（早期建立稳定收入引擎）
+    if (unservicedMine) plans.push({ type: 'room_service', score: 5 * prof.service * pm.service });
     // E) 兜底：洗钱攒支票
-    plans.push({ type: 'check', score: 5 });
-    // F) 现金接近 40F 上限就先洗钱存票，避免溢出浪费（像真人一样落袋为安）
+    plans.push({ type: 'check', score: 4.5 });
+    // F) 现金接近上限就先洗钱落袋（阈值随性格不同）
     if (ai.cash >= 36) plans.push({ type: 'launder', score: 100 });
-    else if (ai.cash >= 28) plans.push({ type: 'launder', score: 8 });
+    else if (ai.cash >= prof.launderAt) plans.push({ type: 'launder', score: 9 });
 
     plans.sort((a, b) => b.score - a.score);
     let plan = plans[0];
