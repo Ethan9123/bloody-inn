@@ -1560,6 +1560,40 @@ body {
 .next-peek strong { color: #ffca28; }
 .next-peek em { color: #90a4ae; font-style: normal; }
 
+/* 迎客：正面朝上的入店牌堆顶旅客（符合原版规则） */
+.welcome-faceup {
+    display: flex;
+    justify-content: center;
+    margin: 8px auto 4px;
+}
+.wf-traveler {
+    position: relative;
+    overflow: hidden;
+    width: 188px;
+    min-height: 96px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(20, 20, 28, 0.94);
+    display: grid;
+    place-content: center;
+    gap: 3px;
+    text-align: center;
+    padding: 10px 12px;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+}
+.wf-traveler.artisan-red    { border-left: 5px solid var(--color-artisan); }
+.wf-traveler.merchant-blue  { border-left: 5px solid var(--color-merchant); }
+.wf-traveler.religious-purple { border-left: 5px solid var(--color-religious); }
+.wf-traveler.noble-green    { border-left: 5px solid var(--color-noble); }
+.wf-traveler.police-grey    { border-left: 5px solid var(--color-police); }
+.wf-traveler.peasant-yellow { border-left: 5px solid var(--color-peasant); }
+.wf-traveler.carnie-orange  { border-left: 5px solid #ff8f00; }
+.wf-traveler.notable-gold   { border-left: 5px solid #c9a227; }
+.wf-traveler strong { color: #fff; font-size: 15px; position: relative; z-index: 1; }
+.wf-traveler span { color: #cfd8dc; font-size: 12px; position: relative; z-index: 1; }
+.wf-traveler .mini-label { color: #ffca28; position: relative; z-index: 1; }
+.wf-traveler .card-emblem { right: -10px; bottom: -10px; width: 70px; height: 70px; }
+
 /* ==========================================================================
    动作特效：锚定飘字 / 粒子 / 警笛 / 彩纸 / 房间高亮
    ========================================================================== */

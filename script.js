@@ -527,48 +527,35 @@ function welcomeGuestsSequentially() {
         return;
     }
 
-    // 入店牌堆牌面朝下、卡背只印等级数字：你能看到下一位旅客的等级，但拿起翻开前不知道是谁
-    let nextRank = travelerDeck.length > 0 ? getRankDisplay(travelerDeck[travelerDeck.length - 1]) : null;
+    // 原版规则：入店牌堆「正面朝上」摆放——主理人能直接看到牌堆顶这位旅客，将其安排进一间客房；
+    // 取走后，下一位旅客随之显露。
+    let nextCard = travelerDeck.length > 0 ? travelerDeck[travelerDeck.length - 1] : null;
 
     renderUI();
     const card = pendingWelcomeCard;
     const area = document.getElementById('interactive-actions');
     area.classList.remove('hidden');
     area.innerHTML = `
-        <div class="welcome-flip-card" id="welcome-flip">
-            <div class="wf-inner">
-                <div class="wf-face wf-back">
-                    <span class="mini-label">入店牌堆 · 卡背</span>
-                    <span class="wf-back-rank">${getRankDisplay(card)}</span>
-                    <span class="wf-back-hint">拿起后才知是谁…</span>
-                </div>
-                <div class="wf-face wf-front ${card.color}">
-                    <div class="card-emblem">${getRoleEmblem(card.role)}</div>
-                    <strong>${card.name}</strong>
-                    <span>${getRankDisplay(card)} · 携带 ${card.loot}F</span>
-                </div>
+        <div class="welcome-faceup card-flip-in">
+            <div class="wf-traveler ${card.color}">
+                <div class="card-emblem">${getRoleEmblem(card.role)}</div>
+                <span class="mini-label">入店牌堆顶 · 正面朝上</span>
+                <strong>${card.name}</strong>
+                <span>${getRankDisplay(card)} · 携带 ${card.loot}F</span>
             </div>
         </div>
-        <div class="hint-line" id="welcome-hint">本轮主理人正在翻牌…</div>
-        ${nextRank !== null
-            ? `<div class="next-peek">牌堆下一位（卡背朝下）：${nextRank} · <em>身份未知</em></div>`
+        <div class="hint-line" id="welcome-hint">${firstPlayer === 'player'
+            ? `请把 <strong>${card.name}</strong> 安排进一间开放且空置的客房（点击客房）。`
+            : '邪恶叔叔正在安排入住…'}</div>
+        ${nextCard
+            ? `<div class="next-peek">取走后下一位：<strong>${nextCard.name}</strong>（${getRankDisplay(nextCard)}）</div>`
             : `<div class="next-peek">这是入店牌堆的最后一位旅客。</div>`}
     `;
     document.getElementById('action-box-title').innerText = "黄昏迎客";
-    document.getElementById('action-box-desc').innerText = firstPlayer === 'player' ? '您是本轮主理人，请安排入住。' : '';
+    document.getElementById('action-box-desc').innerText = firstPlayer === 'player' ? `请安置 ${card.name}（点击客房）。` : '';
     enableMainActionButtons(false);
-    playSound('flip');
-
-    // 翻牌动画 → 揭示身份 → 提示选房
-    setTimeout(() => {
-        let flip = document.getElementById('welcome-flip');
-        if (flip) flip.classList.add('revealed');
-    }, 120);
-    setTimeout(() => {
-        let hint = document.getElementById('welcome-hint');
-        if (hint) hint.innerHTML = `请把 <strong>${card.name}</strong> 安排进一间开放且空置的客房（点击客房）。`;
-        document.getElementById('action-box-desc').innerText = `请安置 ${card.name}（点击客房）。`;
-    }, 620);
+    playSound('checkin');
+    refreshIcons();
 }
 
 function handleWelcomeRoomSelect(roomId) {
@@ -2267,24 +2254,23 @@ function renderUI() {
         }
         peasantContainer.innerHTML = '';
         
-        if (pendingAction.type === 'bribe' && bistro.length > 0) {
-            // 取出一张农民样例卡渲染，允许点击
+        if ((pendingAction.type === 'bribe' || pendingAction.type === 'kill') && bistro.length > 0) {
+            // 取出一张农民样例卡渲染，允许点击（原版规则：农民既可被拉拢，也可被刺杀）
             let peasantSample = bistro[0];
             let peasantBtn = document.createElement('button');
             peasantBtn.id = `peasant-${peasantSample.id}`;
             peasantBtn.className = 'btn btn-secondary';
             peasantBtn.style.padding = '4px 8px';
             peasantBtn.style.fontSize = '11px';
-            peasantBtn.innerText = `收买农民 (一次 2 名)`;
-            
-            // 是否已经被选中
+            peasantBtn.innerText = pendingAction.type === 'bribe' ? `收买农民 (一次 2 名)` : `刺杀农民`;
+
             if (pendingAction.targets.some(t => t.role === 'peasant')) {
                 peasantBtn.classList.add('active');
                 peasantBtn.style.borderColor = '#c62828';
                 peasantBtn.style.color = '#fff';
             }
-            
-            peasantBtn.onclick = () => handleBribeSelect(peasantSample);
+
+            peasantBtn.onclick = () => (pendingAction.type === 'bribe' ? handleBribeSelect(peasantSample) : handleKillSelect(peasantSample));
             peasantContainer.appendChild(peasantBtn);
         }
     }
@@ -2300,8 +2286,9 @@ function renderUI() {
     const deckBack = document.getElementById('traveler-deck-back');
     if (deckBack) {
         if (travelerDeck.length > 0) {
-            // 卡背只露出下一位旅客的等级数字，身份要拿起翻牌才知道
-            deckBack.innerHTML = `卡背 · 下一位 <strong>${getRankDisplay(travelerDeck[travelerDeck.length - 1])}</strong>`;
+            // 入店牌堆正面朝上：牌堆顶旅客的身份可见
+            let top = travelerDeck[travelerDeck.length - 1];
+            deckBack.innerHTML = `牌堆顶(正面): <strong>${top.name.split(' (')[0]}</strong>`;
         } else {
             deckBack.innerText = '牌堆已空';
         }
