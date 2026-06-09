@@ -1,63 +1,84 @@
-# 血腥旅馆 · The Bloody Inn（人机对战网页版）
+# 血腥旅馆 · The Bloody Inn （网页版 / Web Edition）
 
-一个用纯前端实现的《血腥旅馆 (The Bloody Inn)》单人对战网页游戏。你扮演 1831 年法国乡村一家黑店的老板，通过 **拉拢帮凶 / 建造别馆 / 刺杀旅客 / 埋藏尸体 / 洗钱** 积累法郎（F），与一个名为「邪恶叔叔」的 AI 对手比拼最终财富。
+[English](#english) · [中文](#中文)
 
-> 本项目是基于桌游《The Bloody Inn》规则的**非官方粉丝数字改编**，仅供学习与个人娱乐。原作设计 Nicolas Robert，出版 Pearl Games；「邪恶叔叔」单人 AI 模式与各扩展规则版权归原作者所有。本仓库不包含任何官方规则书或卡牌素材。
+A fan-made, single-player **web adaptation** of the board game *The Bloody Inn* — you run a murderous 1831 French inn and out-earn an AI rival "Evil Uncle".
+《血腥旅馆》桌游的**非官方粉丝网页版**：你经营一家 1831 年法国乡村黑店，与名为「邪恶叔叔」的 AI 比拼谁更有钱。
 
-## 在线试玩
+> **Disclaimer / 版权声明**: Unofficial fan project based on the rules of *The Bloody Inn*. Original game by **Nicolas Robert**, published by **Pearl Games**, illustrations by **Weberson Santiago**. This repository contains **no official rulebooks or card art** — only original code and original placeholder emblem art.
+> 本项目为基于《The Bloody Inn》规则的非官方粉丝改编。原作设计 Nicolas Robert，出版 Pearl Games，插画 Weberson Santiago。**本仓库不含任何官方规则书或卡牌美术**，只有原创代码与原创占位徽记。
 
-如果开启了 GitHub Pages，可直接访问：`https://Ethan9123.github.io/bloody-inn/`
+**▶ Play online / 在线试玩：** https://ethan9123.github.io/bloody-inn/
 
-## 本地运行
+---
 
-纯静态站点，无需构建。任选其一：
+## English
 
+### Run locally
+Pure static site, no build step:
 ```bash
-# 方式一：直接用浏览器打开
-open index.html        # macOS
-start index.html       # Windows
-
-# 方式二：起一个本地静态服务器（推荐，避免个别浏览器的本地文件限制）
-python -m http.server 4173
-# 然后访问 http://localhost:4173
+# just open it
+start index.html          # Windows
+open index.html           # macOS
+# or serve it (recommended)
+python -m http.server 4173    # → http://localhost:4173
 ```
 
-## 玩法概览
+### How to play (short version)
+You compete over **two seasons** to amass the most **francs (F)**. Each round has three phases:
+1. **Evening – Welcome**: the host places arriving travelers into rooms (the entrance stack is face-up).
+2. **Night – Actions**: you and the Uncle each take **2 actions** — Bribe / Build an annex / Kill / Bury a corpse / Pass (launder).
+3. **Morning – End of round**: police investigation → rent → wages.
 
-- **派系与特长**：红(手工业者-建造) / 蓝(商贾-拉拢) / 紫(神职-埋尸) / 绿(贵族-油水最多) / 灰(警察-刺杀) / 黄(农民-廉价劳力)。
-- **迎客阶段（黄昏）**：每轮由一名「主理人」安排所有旅客入住，轮次结束后主理人轮换。入店牌堆**牌面朝下、卡背只显示等级数字**——你能预知下一位旅客的等级，但拿起翻开前不知道是谁。
-- **行动阶段（夜晚）**：每回合 2 个行动，打出与目标等级等量的帮凶牌；特长匹配的帮凶可回到手牌。
-- **清晨结算**：警察调查（有未埋尸体要付封口费）→ 房客退房收租 → 支付帮凶工资。
-- **结算**：两季结束后比拼总资产，决出黑店之王。
+A built-in **interactive tutorial** (on the setup screen) walks new players through everything. **Hover any card** to see its exact **bribe / kill / build / bury cost** (including your current discounts), its loot, and what its annex does.
 
-## 可选项
+### Features
+- Faithful base game + 3 expansion modules (Carnies, Notables, Aunt Ginette's Objects, Carnie Events), card counts & effects checked against the rulebook and the PNP.
+- **4 AI difficulties**, including **"Mastermind (human-like)"** — a strategic AI that robs high-value guests for cash, denies your rooms, expands, banks winnings, and narrates its reasoning.
+- **中文 / English** toggle (card names + tooltips).
+- Rich **hover tooltips** with live cost/effect/discount breakdowns.
+- Full animation & sound layer (synthesized via Web Audio — **no external audio files**), transition banners, reduced-motion support.
+- New-player **tutorial**.
+- **Optional local card art**: if a `cards/<EnglishName>.png` image is present, it's used as the card face; otherwise an original faction emblem shows. The `cards/` folder is **git-ignored**, so you can drop your own PNP scans there **for personal local play** — they are never committed or published.
 
-| 选项 | 说明 |
-|------|------|
-| 牌局长度 | 短局 35 张 / 长局 45 张（无论是否开启扩展都固定此长度） |
-| AI 难度 | 傻叔叔（只算钱）/ 阴险叔叔（+拉拢分）/ 嗜血叔叔（+刺杀等级分） |
-| 嘉年华员工 | 加入 14 张橙色嘉年华旅客（拖车、特殊埋葬） |
-| 嘉年华事件 | 嘉年华旅客在场时翻开一次性事件牌 |
-| 名流替换贵族 | 用 14 张金色名流替换绿色贵族 |
-| 姑妈道具 | 开局获得 3 张道具，起始现金提高到 10F |
-| 音效 | 实时合成的音效，可开关 |
+### Tech
+Static `index.html` + `style.css` + `script.js`. No backend, no build, no secrets. External deps: Lucide icons + Google Fonts via CDN.
 
-## 特性
+---
 
-- 卡背等级 + 翻牌揭示的迎客机制，主理人逐轮轮换。
-- 全程动画与音效：入住、刺杀（血溅+震屏）、收买、建造、埋尸、警察突查（警笛闪烁）、收租、付工资、道具、嘉年华（彩纸），以及胜负结算。
-- 所有音效用 Web Audio 实时合成，**不依赖任何外部音频文件**。
-- 支持「减少动态效果」无障碍偏好（`prefers-reduced-motion`）。
+## 中文
 
-## 技术说明
-
-- 纯静态：`index.html` + `style.css` + `script.js`，无后端、无构建步骤、无密钥。
-- 外部依赖仅 Lucide 图标与 Google Fonts（通过 CDN，需联网）。
-
-## 文件结构
-
+### 本地运行
+纯静态站点，无需构建：
+```bash
+# 直接打开
+start index.html          # Windows
+open index.html           # macOS
+# 或起一个本地服务器（推荐）
+python -m http.server 4173    # → http://localhost:4173
 ```
-index.html   页面结构与各弹窗
-style.css     暗黑哥特主题样式与全部动画
-script.js     卡牌数据、游戏状态机、AI、音效与特效引擎
-```
+
+### 怎么玩（速览）
+在**两个季度**里攒下最多的**法郎(F)**。每轮三个阶段：
+1. **黄昏·迎客**：主理人把入店牌堆顶（正面朝上）的旅客安排进客房。
+2. **夜晚·行动**：你和叔叔各做 **2 次行动** —— 拉拢 / 建造别馆 / 刺杀 / 埋尸 / 洗钱放弃。
+3. **清晨·结算**：警察调查 → 收租 → 发工资。
+
+设置界面内置**新手教程**，分步讲清规则。**把鼠标移到任意卡牌上**，即可看到它的**拉拢 / 刺杀 / 建造 / 埋葬具体费用**（含你当前的各种减免）、身上油水，以及别馆能为你带来什么。
+
+### 功能
+- 还原基础游戏 + 3 个扩展模块（嘉年华员工 / 名流 / 姑妈道具 / 嘉年华事件），卡牌数量与效果对照规则书及 PNP 卡面逐张核对。
+- **4 档 AI 难度**，含 **「策略叔叔（真人级）」**—— 会抢劫肥羊换现金、专断你房间财路、扩张地盘、洗钱落袋，并全程"思考"旁白。
+- **中文 / English** 一键切换（卡名 + 悬浮提示）。
+- 信息丰富的**悬浮提示**：实时显示费用 / 效果 / 减免明细。
+- 全套动画与音效（Web Audio 实时合成，**零外部音频文件**）、过场横幅、`prefers-reduced-motion` 无障碍支持。
+- 新手**教程**。
+- **可选的本地卡面图**：若本地存在 `cards/<英文名>.png`，会用作该卡卡面，否则显示原创派系徽记。`cards/` 目录已 **gitignore**，你可以把自有的 PNP 素材放进去**本地游玩**，它们不会被提交或公开发布。
+
+### 技术
+静态 `index.html` + `style.css` + `script.js`，无后端、无构建、无密钥。外部依赖仅 Lucide 图标与 Google 字体（CDN）。
+
+---
+
+### Credits / 致谢
+Designer: Nicolas Robert · Publisher: Pearl Games · Illustrations: Weberson Santiago. Fan web adaptation — not affiliated with or endorsed by the rights holders.

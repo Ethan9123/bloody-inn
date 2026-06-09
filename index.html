@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <!-- 引入Lucide图标 -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="style.css?v=3">
+    <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
     <div id="setup-screen" class="screen">
@@ -45,9 +45,11 @@
                     <p class="setup-hint">悬停查看每个扩展的说明。开关只影响本局；牌堆长度仍固定为所选的短/长局。</p>
                 </div>
                 <div class="setup-group">
-                    <label>表现效果</label>
+                    <label>表现效果 / Options</label>
                     <div class="btn-toggle-group">
-                        <button id="btn-sound" class="btn btn-toggle active" onclick="toggleExpansion('sound')">音效开启</button>
+                        <button id="btn-sound" class="btn btn-toggle active" onclick="toggleExpansion('sound')">音效开启 / Sound</button>
+                        <button class="btn btn-toggle lang-btn active" data-lang="zh" onclick="setLang('zh')">中文</button>
+                        <button class="btn btn-toggle lang-btn" data-lang="en" onclick="setLang('en')">English</button>
                     </div>
                 </div>
                 <div class="setup-actions">
@@ -75,6 +77,10 @@
                 </div>
             </div>
             <div class="header-right">
+                <div class="lang-toggle">
+                    <button class="lang-btn active" data-lang="zh" onclick="setLang('zh')">中</button>
+                    <button class="lang-btn" data-lang="en" onclick="setLang('en')">EN</button>
+                </div>
                 <button class="btn btn-secondary" onclick="toggleHelpModal()"><i data-lucide="help-circle"></i> 规则说明</button>
             </div>
         </header>
@@ -369,6 +375,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=3"></script>
+    <script src="script.js?v=4"></script>
 </body>
 </html>

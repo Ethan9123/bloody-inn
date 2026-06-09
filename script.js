@@ -355,6 +355,13 @@ function setDifficulty(diff) {
     if (mm) mm.classList.toggle('active', diff === 'mastermind');
 }
 
+function setLang(l) {
+    lang = l;
+    document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === l));
+    let gs = document.getElementById('game-screen');
+    if (gs && !gs.classList.contains('hidden') && typeof renderUI === 'function') renderUI();
+}
+
 function toggleExpansion(option) {
     expansionOptions[option] = !expansionOptions[option];
 
@@ -2250,19 +2257,20 @@ function renderUI() {
                         <div class="card-icon-aptitude">${getAptitudeIcon(card.aptitude)}</div>
                     </div>
                     <div class="card-body">
-                        <span class="card-name">${card.name}</span>
+                        <span class="card-name">${cardName(card)}</span>
                         <span class="card-role-label">${card.role}</span>
                         <div class="card-loot">${card.loot}F</div>
                     </div>
                     <div class="card-footer">
-                        <span class="annex-title">${card.annexName}</span>
+                        <span class="annex-title">${annexLabel(card)}</span>
                         <span class="annex-ability">${card.annexDesc}</span>
                     </div>
                 </div>
             `;
             // 将 onclick 挂载在内部的 card 元素上，防止布局遮挡
             let cardEl = doorDiv.querySelector('.card');
-            cardEl.insertAdjacentHTML('afterbegin', `<div class="card-emblem">${getRoleEmblem(card.role)}</div>`);
+            cardEl.insertAdjacentHTML('afterbegin', cardArtHTML(card));
+            attachCardTip(cardEl, card, 'room');
             if (doorDiv.onclick) {
                 cardEl.onclick = doorDiv.onclick;
                 doorDiv.onclick = null;
@@ -2305,16 +2313,17 @@ function renderUI() {
                 <div class="card-icon-aptitude">${getAptitudeIcon(card.aptitude)}</div>
             </div>
             <div class="card-body">
-                <span class="card-name">${card.name}</span>
+                <span class="card-name">${cardName(card)}</span>
                 <span class="card-role-label">${card.role}</span>
                 <div class="card-loot">${card.loot}F</div>
             </div>
             <div class="card-footer">
-                <span class="annex-title">${card.annexName}</span>
+                <span class="annex-title">${annexLabel(card)}</span>
                 <span class="annex-ability">${card.annexDesc}</span>
             </div>
         `;
-        cardDiv.insertAdjacentHTML('afterbegin', `<div class="card-emblem">${getRoleEmblem(card.role)}</div>`);
+        cardDiv.insertAdjacentHTML('afterbegin', cardArtHTML(card));
+        attachCardTip(cardDiv, card, 'hand');
         handDiv.appendChild(cardDiv);
     });
     document.getElementById('hand-count').innerText = `${player.hand.length} 张`;
@@ -2346,7 +2355,7 @@ function renderUI() {
                     <span class="card-rank">${getRankDisplay(card)}</span>
                 </div>
                 <div class="card-body">
-                    <span class="card-name">${card.annexName}</span>
+                    <span class="card-name">${annexLabel(card)}</span>
                     <span class="card-role-label">别馆</span>
                     <span style="font-size: 8px; color: #daa520; margin-top: 4px;">容量: ${slot.buried.length}/${getAnnexCapacity(card)}</span>
                 </div>
@@ -2357,7 +2366,7 @@ function renderUI() {
             ${buriedHtml}
         `;
         let aCard = slotContainer.querySelector('.card');
-        if (aCard) aCard.insertAdjacentHTML('afterbegin', `<div class="card-emblem">${getRoleEmblem(card.role)}</div>`);
+        if (aCard) { aCard.insertAdjacentHTML('afterbegin', cardArtHTML(card)); attachCardTip(aCard, card, 'annex'); }
         annexesDiv.appendChild(slotContainer);
     });
     document.getElementById('player-annex-count').innerText = player.annexes.length;
@@ -2379,12 +2388,13 @@ function renderUI() {
                 <span class="card-rank">${getRankDisplay(card)}</span>
             </div>
             <div class="card-body">
-                <span class="card-name">${card.name}</span>
+                <span class="card-name">${cardName(card)}</span>
                 <span class="card-role-label">尸体</span>
                 <div class="card-loot">${card.loot}F</div>
             </div>
         `;
-        cardDiv.insertAdjacentHTML('afterbegin', `<div class="card-emblem">${getRoleEmblem(card.role)}</div>`);
+        cardDiv.insertAdjacentHTML('afterbegin', cardArtHTML(card));
+        attachCardTip(cardDiv, card, 'corpse');
         corpsesDiv.appendChild(cardDiv);
     });
     document.getElementById('player-corpse-count').innerText = player.corpses.length;
@@ -2474,6 +2484,120 @@ const ROLE_EMBLEMS = {
 };
 function getRoleEmblem(role) {
     return ROLE_EMBLEMS[role] || '';
+}
+
+// 卡面图：若本地存在 cards/<英文名>.png 则用作卡面，否则回退到原创徽记。
+// （cards/ 目录已 gitignore，玩家可放入自有 PNP 素材本地游玩，不随公开仓库发布）
+function cardImgKey(card) {
+    let b = splitBilingual(card.name || '');
+    let base = (b.en || b.zh || 'card').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return base || 'card';
+}
+function cardArtHTML(card) {
+    return `<img class="card-art" src="cards/${cardImgKey(card)}.png" alt="" loading="lazy" onerror="this.remove()">` +
+           `<div class="card-emblem">${getRoleEmblem(card.role)}</div>`;
+}
+
+// ==========================================
+// 双语 + 卡牌悬浮提示（费用/效果明细）
+// ==========================================
+let lang = 'zh'; // 'zh' | 'en'
+
+// 卡名形如 "农民 (Cultivator)"：按语言取中文或英文部分
+function splitBilingual(s) {
+    if (!s) return { zh: '', en: '' };
+    let m = s.match(/^(.*?)\s*\(([^()]*)\)\s*$/);
+    if (!m) return { zh: s, en: s };
+    return { zh: m[1].trim(), en: m[2].trim() };
+}
+function cardName(card) {
+    if (!card) return '';
+    let b = splitBilingual(card.name);
+    return lang === 'en' ? (b.en || b.zh) : b.zh;
+}
+function annexLabel(card) {
+    let b = splitBilingual(card.annexName || '');
+    return lang === 'en' ? (b.en || b.zh) : (b.zh || b.en);
+}
+
+// 当前各类减免（基于玩家已建别馆与道具）
+function discCount(name) { return player.annexes.filter(a => a.card.annexName.includes(name)).length; }
+function bribeCostInfo(card) { let raw = getCardRank(card, 'bribe'), d = discCount("会客厅"); return { raw, disc: d, net: Math.max(0, raw - d) }; }
+function killCostInfo(card) { let raw = getCardRank(card, 'kill'), d = discCount("熊笼") + discCount("熊戏笼"); return { raw, disc: d, net: Math.max(0, raw - d) }; }
+function buildCostInfo(card) { let raw = getCardRank(card, 'build'), d = discCount("车间"); return { raw, disc: d, net: Math.max(0, raw - d) }; }
+function buryCostInfo(card) { let raw = getCardRank(card, 'bury'), d = discCount("酒窖") + (objectEffects.buryDiscount || 0); return { raw, disc: d, net: Math.max(0, raw - d) }; }
+
+function T(zh, en) { return lang === 'en' ? en : zh; }
+
+function costRow(label, info) {
+    let discTxt = info.disc > 0 ? `<span class="tip-disc">${T('原 ' + info.raw + '，减免 ' + info.disc, 'was ' + info.raw + ', −' + info.disc)}</span>` : '';
+    return `<div class="tip-cost"><span>${label}</span><b>${info.net} ${T('张帮工牌', info.net === 1 ? 'card' : 'cards')}</b>${discTxt}</div>`;
+}
+
+function buildCardTip(card, ctx) {
+    if (!card) return '';
+    let rows = [`<div class="tip-name">${cardName(card)}</div>`];
+    let rankTxt = (card.buildRank !== undefined && card.buildRank !== card.rank)
+        ? T(`住等级 ${card.rank} / 建埋等级 ${card.buildRank}`, `inn rank ${card.rank} / annex rank ${card.buildRank}`)
+        : T(`等级 ${card.rank}`, `rank ${card.rank}`);
+    rows.push(`<div class="tip-sub">${rankTxt} · ${T('身上油水', 'loot')} ${card.loot}F</div>`);
+
+    if (ctx === 'room') {
+        rows.push(costRow(T('拉拢（收为帮凶）', 'Bribe (recruit)'), bribeCostInfo(card)));
+        if (card.role !== 'peasant') rows.push(costRow(T('刺杀（变尸体）', 'Kill (→ corpse)'), killCostInfo(card)));
+        if (card.annexName) rows.push(`<div class="tip-eff"><b>${T('若日后建成别馆：', 'If later built as annex:')}</b> ${T(splitBilingual(card.annexName).zh, splitBilingual(card.annexName).en)}<br>${card.annexDesc || '—'}</div>`);
+    } else if (ctx === 'hand') {
+        if (card.role !== 'peasant' && card.role !== 'police' && card.annexName) {
+            rows.push(costRow(T('建造此别馆', 'Build this annex'), buildCostInfo(card)));
+            rows.push(`<div class="tip-eff"><b>${T('建成后效果：', 'Annex effect:')}</b> ${card.annexDesc || '—'}</div>`);
+        } else {
+            rows.push(`<div class="tip-note">${T('农民/警察不能建成别馆', 'Peasants & police cannot become annexes')}</div>`);
+        }
+        rows.push(`<div class="tip-note">${T('作为帮凶，每个清晨需付 1F 工资', 'As an accomplice, costs 1F wage each morning')}</div>`);
+    } else if (ctx === 'corpse') {
+        let info = buryCostInfo(card);
+        rows.push(costRow(T('埋葬此尸体', 'Bury this corpse'), info));
+        rows.push(`<div class="tip-eff">${T('埋葬可掠夺', 'Burying claims')} <b>${card.loot}F</b>${card.specialBurial === 'bearded' ? T('（大胡子：与对手平分）', ' (bearded: split with rival)') : ''}</div>`);
+        if (info.disc > 0) rows.push(`<div class="tip-note">${T('当前埋葬减免', 'Current bury discount')}: −${info.disc}</div>`);
+    } else if (ctx === 'annex') {
+        rows.push(`<div class="tip-eff"><b>${T('此别馆当前为你提供：', 'This annex currently gives you:')}</b><br>${card.annexDesc || '—'}</div>`);
+        rows.push(`<div class="tip-note">${T('埋尸容量', 'Burial capacity')}: ${getAnnexCapacity(card)}</div>`);
+    }
+    return rows.join('');
+}
+
+function ensureCardTip() {
+    let tip = document.getElementById('card-tip');
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'card-tip';
+        tip.className = 'card-tip hidden';
+        document.body.appendChild(tip);
+    }
+    return tip;
+}
+let _tipEl = null;
+function showCardTip(card, ctx, anchorEl) {
+    if (!card) return;
+    const tip = ensureCardTip();
+    tip.innerHTML = buildCardTip(card, ctx);
+    tip.classList.remove('hidden');
+    const r = anchorEl.getBoundingClientRect();
+    let x = r.right + 10, y = r.top;
+    if (x + 250 > window.innerWidth) x = r.left - 260;
+    if (x < 4) x = 4;
+    y = Math.max(8, Math.min(y, window.innerHeight - tip.offsetHeight - 8));
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+}
+function hideCardTip() {
+    const tip = document.getElementById('card-tip');
+    if (tip) tip.classList.add('hidden');
+}
+function attachCardTip(el, card, ctx) {
+    if (!el || !card) return;
+    el.addEventListener('mouseenter', () => showCardTip(card, ctx, el));
+    el.addEventListener('mouseleave', hideCardTip);
 }
 
 function getAptitudeIcon(aptitude) {
