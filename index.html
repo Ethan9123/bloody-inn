@@ -21,8 +21,8 @@
                 <div class="setup-group">
                     <label>选择游戏长度</label>
                     <div class="btn-toggle-group">
-                        <button id="btn-short-game" class="btn btn-toggle active" onclick="setGameLength('short')">短局 (35张牌)</button>
-                        <button id="btn-long-game" class="btn btn-toggle" onclick="setGameLength('long')">长局 (45张牌)</button>
+                        <button id="btn-short-game" class="btn btn-toggle active" onclick="setGameLength('short')" title="按原版移除表：2人35张 / 3人42张 / 4人48张">短局</button>
+                        <button id="btn-long-game" class="btn btn-toggle" onclick="setGameLength('long')" title="按原版移除表：2人45张 / 3人54张 / 4人64张">长局</button>
                     </div>
                 </div>
                 <div class="setup-group">
@@ -52,7 +52,7 @@
                         <button id="btn-exp-notables" class="btn btn-toggle" onclick="toggleExpansion('notables')" title="用 14 张金色名流替换原绿色贵族，带来更复杂的别馆能力">名流替换贵族</button>
                         <button id="btn-exp-objects" class="btn btn-toggle" onclick="toggleExpansion('objects')" title="开局获得 3 张姑妈道具（毒药、石灰、地毯等），起始现金提高到 10F">姑妈道具</button>
                     </div>
-                    <p class="setup-hint">悬停查看每个扩展的说明。开关只影响本局；牌堆长度仍固定为所选的短/长局。</p>
+                    <p class="setup-hint">悬停查看每个扩展的说明。牌堆按原版规则移除：人数越多牌堆越大；开扩展时总牌数相应增加。</p>
                 </div>
                 <div class="setup-group">
                     <label>表现效果 / Options</label>
@@ -414,6 +414,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=10"></script>
+    <script src="script.js?v=11"></script>
 </body>
 </html>

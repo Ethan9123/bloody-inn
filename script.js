@@ -176,7 +176,7 @@ const OBJECT_CARDS = [
 // ==========================================
 // 游戏状态机
 // ==========================================
-let gameLength = 'short'; // 'short' (35张) 或 'long' (45张)
+let gameLength = 'short'; // 'short'/'long'——牌堆大小按原版移除表随人数变化（见 startGame 的 REMOVE_TABLE）
 let difficulty = 'silly'; // 'silly', 'scheming', 'murderous'
 let expansionOptions = {
     carnies: false,
@@ -550,9 +550,11 @@ function startGame() {
     allTravelers.forEach((c, idx) => c.id = 'trav_' + idx + '_' + Math.random().toString(36).substr(2, 5));
     shuffleCards(allTravelers);
     
-    bistro = [];
+    // 原版农民设置：8 张农民中每位玩家发 2 张作起始手牌，没用到的退回盒子——小酒馆开局是空的，
+    // 农民被打出当帮工后才会回到酒馆。（叔叔们的 2 张在下方建好 aiUncles 后发放）
+    let peasantPool = [];
     for (let i = 0; i < 8; i++) {
-        bistro.push({
+        peasantPool.push({
             id: 'peasant_' + i,
             name: "农民 (Peasant)",
             role: "peasant",
@@ -564,12 +566,15 @@ function startGame() {
             aptitude: "none"
         });
     }
-    
-    player.hand = [bistro.pop(), bistro.pop()];
-    
-    // 入店牌堆固定为短局 35 / 长局 45 张，无论是否开启扩展都保持局长一致
-    let targetDeck = (gameLength === 'short') ? 35 : 45;
-    let deckSize = Math.min(allTravelers.length, Math.max(1, targetDeck));
+    bistro = [];
+    player.hand = [peasantPool.pop(), peasantPool.pop()];
+
+    // 原版牌堆设置：按人数与局长从 70 张基础旅客中移除一定数量
+    //   2人 移除35/25 → 牌堆35/45；3人 移除28/16 → 42/54；4人 移除22/6 → 48/64
+    //  （开扩展时总牌数变多，按官方"移除相同数量"的规则等比放大牌堆）
+    const REMOVE_TABLE = { 2: { short: 35, long: 25 }, 3: { short: 28, long: 16 }, 4: { short: 22, long: 6 } };
+    let removeCount = (REMOVE_TABLE[playerCount] || REMOVE_TABLE[2])[gameLength === 'short' ? 'short' : 'long'];
+    let deckSize = Math.max(1, allTravelers.length - removeCount);
     travelerDeck = allTravelers.slice(0, deckSize);
     removedStack = allTravelers.slice(deckSize);
     exitStack = [];
@@ -586,10 +591,12 @@ function startGame() {
         shuffleCards(eventDeck);
     }
     
-    // 2. 建立 AI 叔叔（每个各自难度）与本局座位
+    // 2. 建立 AI 叔叔（每个各自难度）与本局座位；每位叔叔同样发 2 张起始农民（原版：每位玩家 2 张）
     aiUncles = [];
     for (let i = 0; i < playerCount - 1; i++) aiUncles.push(makeUncle(i, aiDiffs[i] || 'mastermind'));
+    aiUncles.forEach(u => { u.hand.push(peasantPool.pop(), peasantPool.pop()); });
     ai = aiUncles[0];
+    // 没发出去的农民按原版退回盒子（不进酒馆）——peasantPool 剩余的直接丢弃
 
     // 3. 按人数初始化客房版图（room.key: 'player' / AI叔叔下标 / 'neutral' / 'closed'）
     rooms = buildBoard();
@@ -621,7 +628,7 @@ function startGame() {
     document.getElementById('setup-screen').classList.add('hidden');
     document.getElementById('game-screen').classList.remove('hidden');
     
-    document.getElementById('info-game-length').innerText = (gameLength === 'short') ? '短局 (35张牌)' : '长局 (45张牌)';
+    document.getElementById('info-game-length').innerText = `${gameLength === 'short' ? '短局' : '长局'} (${travelerDeck.length}张牌)`;
     // N 人局：列出每个 AI 叔叔的难度（座位随机，故按叔叔编号列出；2 人局只有一个 AI，省去编号）
     let diffName = aiUncles.length === 1
         ? (DIFF_LABELS[aiUncles[0].difficulty] || aiUncles[0].difficulty)
@@ -1505,6 +1512,20 @@ function triggerAnnexImmediateEffect(card) {
         player.cash -= 10;
         player.checks += 1;
         logMessage("玩家", "交易所立刻购买 1 张支票。", "player");
+    } else if (card.annexName.includes("刀靶")) {
+        // 飞刀手[刀靶]：建造时可对一名等级0旅客执行一次免费刺杀（不花帮工；尸体照常进未埋堆）
+        let spots = allOccupiedSpots().filter(s => getCardRank(s.occupant, 'kill') === 0 && s.occupant.role !== 'police');
+        if (spots.length > 0) {
+            let best = spots.reduce((m, s) => (s.occupant.loot || 0) > (m.occupant.loot || 0) ? s : m, spots[0]);
+            let victim = best.occupant;
+            best.clear();
+            victim.isDead = true;
+            player.corpses.push(victim);
+            logMessage("玩家", `[刀靶] 飞刀出手——免费刺杀了${best.label}的等级0旅客 ${victim.name}（尸体待埋葬）。`, "warn");
+            playEffect('kill', victim.name, document.getElementById(best.anchorId));
+        } else {
+            logMessage("系统", "[刀靶] 旅馆里没有等级0的旅客，免费刺杀未触发。", "system");
+        }
     }
 }
 
@@ -1972,8 +1993,46 @@ function uncleAnnexImmediateEffect(self, card) {
         let neutralRoom = rooms.find(r => r.key === 'neutral');
         if (neutralRoom) { neutralRoom.key = self.idx; syncAIKeys(); }
     }
+    else if (card.annexName.includes("豪华吊灯")) addUncleCash(self, 4);
+    else if (card.annexName.includes("特大号床")) addUncleCash(self, 6);
+    else if (card.annexName.includes("豪华餐厅")) addUncleCash(self, 9);
+    else if (card.annexName.includes("凉亭")) addUncleCash(self, 18);
+    else if (card.annexName.includes("公园") || card.annexName.includes("马厩") || card.annexName.includes("杂货铺") || card.annexName.includes("主教区") || card.annexName.includes("铁锤游戏") || card.annexName.includes("档案室")) addUncleCash(self, 4);
+    else if (card.annexName.includes("马车站")) addUncleCash(self, 6);
+    else if (card.annexName.includes("珠宝室")) addUncleCash(self, 8);
+    else if (card.annexName.includes("客房服务")) {
+        let room = rooms.find(r => isOpenRoom(r) && r.key === self.idx && !roomHasService(r))
+            || rooms.find(r => isOpenRoom(r) && !roomHasService(r));
+        if (room) { setRoomService(room, self.idx); syncAIKeys(); }
+    }
+    else if (card.annexName.includes("高台")) {
+        addUncleCash(self, 1);
+        if (bistro.length > 0) self.hand.push(bistro.pop());
+    }
+    else if (card.annexName.includes("丝绸农场")) {
+        addUncleCash(self, rooms.filter(r => r.key === self.idx && r.occupant).length * 3);
+    }
+    else if (card.annexName.includes("酒桶")) {
+        addUncleCash(self, rooms.filter(r => r.key === 'neutral' && r.occupant).length * 3);
+    }
+    else if (card.annexName.includes("交易所") && self.cash >= 10) {
+        self.cash -= 10; self.checks += 1;
+    }
+    else if (card.annexName.includes("刀靶")) {
+        // 飞刀手[刀靶]：建造时免费刺杀一名等级0旅客（尸体进叔叔的未埋堆）
+        let spots = allOccupiedSpots().filter(s => getCardRank(s.occupant, 'kill') === 0 && s.occupant.role !== 'police');
+        if (spots.length > 0) {
+            let best = spots.reduce((m, s) => (s.occupant.loot || 0) > (m.occupant.loot || 0) ? s : m, spots[0]);
+            let victim = best.occupant;
+            best.clear();
+            victim.isDead = true;
+            self.corpses.push(victim);
+            logMessage("AI", `${self.name}的[刀靶]飞刀出手——免费刺杀了${best.label}的 ${victim.name}（尸体待埋）。`, "ai");
+            playEffect('kill', victim.name, document.getElementById(best.anchorId));
+        }
+    }
 }
-// 候选建造卡的引擎价值估算（埋尸容量 + 常用效果）
+// 候选建造卡的引擎价值估算（埋尸容量 + 常用效果 + 建造时的即时现金）
 function annexBuildValue(self, card) {
     let v = getAnnexCapacity(card) * 2.5;
     let an = card.annexName || '';
@@ -1983,6 +2042,15 @@ function annexBuildValue(self, card) {
     if (an.includes("温室") || an.includes("议事厅")) v += 3;  // 终局支票加成
     if (an.includes("菜园") || an.includes("报摊") || an.includes("祭坛")) v += 2;
     if (card.isTrailer) v += 1.5;             // 拖车：1F/晨 + 埋尸
+    // 建造时的即时现金（按一半折算进估值）
+    let instant = 0;
+    if (an.includes("凉亭")) instant = 18;
+    else if (an.includes("豪华餐厅")) instant = 9;
+    else if (an.includes("珠宝室")) instant = 8;
+    else if (an.includes("特大号床") || an.includes("马车站")) instant = 6;
+    else if (an.includes("豪华吊灯") || an.includes("公园") || an.includes("马厩") || an.includes("杂货铺") || an.includes("主教区") || an.includes("铁锤游戏") || an.includes("档案室")) instant = 4;
+    v += instant * 0.5;
+    if (an.includes("刀靶") && allOccupiedSpots().some(s => getCardRank(s.occupant, 'kill') === 0 && s.occupant.role !== 'police')) v += 3; // 免费刺杀一名0级
     return v;
 }
 
