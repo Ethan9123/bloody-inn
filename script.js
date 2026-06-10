@@ -265,21 +265,19 @@ function isHumanRoom(r) { return r.key === 'player'; }
 function isAIRoom(r) { return typeof r.key === 'number'; }
 function uncleOfRoom(r) { return isAIRoom(r) ? aiUncles[r.key] : null; }
 
-// 按人数生成 8 间客房版图（你 + 1~3 个 AI 叔叔；'s' 表示该房带客房服务）
+// 按原版规则生成 8 间客房版图：
+// 「确定哪些房间开放」——每位玩家(你 + 各 AI 叔叔)在一扇门上放自己颜色的钥匙(各 1 间)；
+// 再放白色中立钥匙：2~3 人放 3 把、4 人放 4 把。有钥匙的门才算"开放"，其余门未开放(closed)。
+// 故开放间数：2 人 5 间 / 3 人 6 间 / 4 人 8 间(全开)。客房服务非起始配置——由[礼宾员]别馆建造获得。
 function buildBoard() {
-    const SPECS = {
-        2: [['player'], ['neutral'], [0, 's'], [0], [0], ['closed'], ['closed'], ['closed']],
-        3: [['player'], [0, 's'], [0], [1, 's'], [1], ['neutral'], ['closed'], ['closed']],
-        4: [['player'], [0, 's'], [0], [1, 's'], [1], [2, 's'], ['neutral'], ['closed']],
-    };
-    let spec = SPECS[playerCount] || SPECS[2];
-    return spec.map((s, i) => ({
-        id: i + 1,
-        key: s[0],
-        serviceOwner: s[1] === 's' ? s[0] : null,
-        hasService: s[1] === 's',
-        occupant: null,
-    }));
+    const neutralCount = (playerCount === 4) ? 4 : 3;
+    let board = [];
+    let id = 1;
+    board.push({ id: id++, key: 'player' });                                   // 你的起始客房
+    for (let u = 0; u < playerCount - 1; u++) board.push({ id: id++, key: u }); // 每个叔叔 1 间
+    for (let n = 0; n < neutralCount; n++) board.push({ id: id++, key: 'neutral' }); // 中立客房
+    while (id <= 8) board.push({ id: id++, key: 'closed' });                    // 未放钥匙的门：未开放
+    return board.map(r => ({ id: r.id, key: r.key, serviceOwner: null, hasService: false, occupant: null }));
 }
 
 // 房间状态
@@ -3447,7 +3445,7 @@ const TUTORIAL_PAGES = [
     {
         title: "🌗 一轮分三个阶段",
         body: `<ul class="tut-list">
-                 <li><strong>① 黄昏·迎客</strong>：本轮"主理人"把入店牌堆顶的旅客逐个安排进客房（牌堆正面朝上，能看到来的是谁）。</li>
+                 <li><strong>① 黄昏·迎客</strong>：本轮"主理人"把入店牌堆顶的旅客逐个安排进<strong>每一间开放客房</strong>（牌堆正面朝上）。开放客房 = 有钥匙的门：每人 1 间起始房 + 中立房（2~3 人 3 间、<strong>4 人全 8 间开放</strong>）。</li>
                  <li><strong>② 夜晚·行动</strong>：你和叔叔<strong>各做 2 次行动</strong>（轮流）。这是博弈的核心。</li>
                  <li><strong>③ 清晨·结算</strong>：警察调查 → 房客退房收租 → 给帮凶发工资。</li>
                </ul>
