@@ -155,11 +155,11 @@ const CARNIE_EVENTS = [
 ];
 
 const OBJECT_CARDS = [
-    { id: "cake", name: "蛋糕", cost: 0, timing: "黄昏", desc: "放在一名住客上：其本轮退房时你额外获得 2F。", effect: "extra_rent" },
-    { id: "gold_teeth", name: "金牙", cost: 0, timing: "埋尸", desc: "下一次埋尸额外多掠夺 2F。", effect: "bury_bonus" },
+    { id: "cake", name: "蛋糕", cost: 0, timing: "黄昏", desc: "放在一名住客上：其退房离店时你额外获得 2F × 其住宿等级。", effect: "extra_rent" },
+    { id: "gold_teeth", name: "金牙", cost: 0, timing: "埋尸", desc: "下一次埋尸：额外掠夺 2F × 该尸体的埋葬等级。", effect: "bury_bonus" },
     { id: "letter", name: "举报信", cost: 0, timing: "黄昏", desc: "本轮清晨即使没有警察，也强制按调查处理所有未埋尸体。", effect: "force_police" },
     { id: "rug", name: "地毯", cost: 0, timing: "清晨", desc: "把 1 具未埋尸体扫到地毯下，本轮调查不会被发现。", effect: "hide_corpse" },
-    { id: "coffee", name: "咖啡", cost: 1, timing: "黄昏", desc: "立刻获得 2F。", effect: "coffee" },
+    { id: "coffee", name: "咖啡", cost: 1, timing: "黄昏", desc: "招待一名住客：立刻获得 1F × 其住宿等级；该住客本轮不能被下毒。", effect: "coffee" },
     { id: "hammer", name: "锤子", cost: 1, timing: "建造", desc: "下一次建造打出的帮工全部返回手牌。", effect: "return_build" },
     { id: "liquor", name: "烈酒", cost: 1, timing: "拉拢", desc: "下一次拉拢打出的帮工全部返回手牌。", effect: "return_bribe" },
     { id: "snow", name: "雪堆", cost: 1, timing: "清晨", desc: "盖住 1 具未埋尸体，本轮警察调查不处理它（仅一轮）。", effect: "hide_corpse" },
@@ -405,18 +405,29 @@ function resetRoundEffects() {
         fiasco: false,
         pickpockets: false,
         protectedCorpses: 0,
-        playerExtraRent: 0
+        cakeTargets: []   // [蛋糕]招待的住客（{id,rank,name}）——其离店时支付 2F×等级；中途被杀/拉拢则作废
     };
 }
 
 function resetObjectEffects() {
     objectEffects = {
         returnHelpersFor: {},
-        buryBonus: 0,
+        goldTeeth: 0,     // 待用的[金牙]数量——下次埋葬等级≥1尸体时消耗，+2F×埋葬等级/枚
         buryDiscount: 0,
         well: false,
         buildFromRoom: false
     };
+}
+
+// [金牙]消耗：埋葬时计算加成（2F × 尸体的埋葬等级 × 枚数）；等级 0 的尸体不消耗、留待下次
+function consumeGoldTeeth(corpse) {
+    let n = objectEffects.goldTeeth || 0;
+    let rank = getCardRank(corpse, 'bury');
+    if (!n || rank < 1) return 0;
+    objectEffects.goldTeeth = 0;
+    let bonus = 2 * rank * n;
+    logMessage("道具", `[金牙] 从 ${corpse.name} 口中撬出金牙：额外 +${bonus}F（2F × 埋葬等级 ${rank}${n > 1 ? ` × ${n}枚` : ''}）。`, "player");
+    return bonus;
 }
 
 function getCardRank(card, action = 'default') {
@@ -1344,8 +1355,7 @@ function finishPlayerAction() {
             targetSlot.buried.push({ ...corpse, buriedByPlayer: true });
             if (corpse.specialBurial === 'twins') targetSlot.buried.push({ name: '双胞胎之二', loot: 0, isTwinPlaceholder: true, color: corpse.color, buriedByPlayer: true });
             playerExtraBuried += (corpse.specialBurial === 'twins' ? 2 : 1);
-            let loot = corpse.loot + (objectEffects.buryBonus || 0);
-            objectEffects.buryBonus = 0;
+            let loot = corpse.loot + consumeGoldTeeth(corpse);
             let mine = Math.ceil(loot / 2), theirs = loot - mine;
             addPlayerCash(mine);
             addUncleCash(owner, theirs);
@@ -2033,8 +2043,16 @@ function aiStrategicAction(self) {
     const isOpp = s => s.ownerKey === 'player' || (typeof s.ownerKey === 'number' && s.ownerKey !== self.idx);
     const lateGame = getRoundPhase() === 'late';
     const policeLurking = occupied.some(s => s.occupant.role === 'police');
-    // 道具：咖啡（+2F，不占行动）尽早喝掉
-    if (uncleConsumeObject(self, 'coffee')) addUncleCash(self, 2);
+    // 道具：[咖啡]招待大堂里等级最高的住客（1F×等级，不占行动；该住客随后不能被下毒）
+    let coffeeCands = occupied.map(s => s.occupant).filter(c => getCardRank(c, 'bribe') >= 1 && !c.hasCoffee);
+    if (coffeeCands.length > 0 && (self.objects || []).some(o => o.effect === 'coffee')) {
+        let best = coffeeCands.reduce((m, c) => getCardRank(c, 'bribe') > getCardRank(m, 'bribe') ? c : m, coffeeCands[0]);
+        if (uncleConsumeObject(self, 'coffee')) {
+            best.hasCoffee = true;
+            addUncleCash(self, getCardRank(best, 'bribe'));
+            logMessage("AI", `${self.name}用[咖啡]招待了 ${best.name}，立得 ${getCardRank(best, 'bribe')}F。`, "ai");
+        }
+    }
     const handSize = self.hand.length;
     const wagePressure = Math.max(0, handSize - 4) * 1.5; // 手牌太多→明早工资负担
     const freeBury = uncleFreeBuryCapacity(self);
@@ -2087,13 +2105,22 @@ function aiStrategicAction(self) {
         let ownSlot = corpse.specialBurial === 'bearded' ? null
             : self.annexes.find(a => !(a.card.isTrailer && a.occupant)
                 && effectiveBuried(a) + need <= getAnnexCapacity(a.card));
-        let playerSlot = !ownSlot ? player.annexes.find(a => !(a.card.isTrailer && a.occupant)
-            && effectiveBuried(a) + need <= getAnnexCapacity(a.card)) : null;
-        if ((ownSlot || playerSlot) && uncleCanPay(self, bCost)) {
+        // 没有自家坑时：可埋进「任何其他玩家」的别馆并平分（原版规则）——人类与其他叔叔的别馆都算
+        let rivalOwner = null, rivalSlot = null;
+        if (!ownSlot) {
+            let rivals = [{ owner: 'player', annexes: player.annexes }]
+                .concat(aiUncles.filter(x => x !== self).map(x => ({ owner: x, annexes: x.annexes || [] })));
+            for (let rv of rivals) {
+                let s = rv.annexes.find(a => !(a.card.isTrailer && a.occupant)
+                    && effectiveBuried(a) + need <= getAnnexCapacity(a.card));
+                if (s) { rivalOwner = rv.owner; rivalSlot = s; break; }
+            }
+        }
+        if ((ownSlot || rivalSlot) && uncleCanPay(self, bCost)) {
             let loss = uncleHelperLoss(self, 'bury', bCost);
             let gain = ownSlot ? corpse.loot : Math.ceil(corpse.loot / 2); // 埋对手别馆要平分
             let urgency = (policeLurking ? 14 : 0) + self.corpses.length * 2.5 + (lateGame ? 5 : 0);
-            plans.push({ type: 'bury', corpse, slot: ownSlot || playerSlot, slotIsOwn: !!ownSlot, cost: bCost, score: gain * 0.6 + urgency - loss * 1.5 });
+            plans.push({ type: 'bury', corpse, slot: ownSlot || rivalSlot, slotIsOwn: !!ownSlot, rivalOwner, cost: bCost, score: gain * 0.6 + urgency - loss * 1.5 });
         }
     }
 
@@ -2171,19 +2198,25 @@ function aiStrategicAction(self) {
         let ci = self.corpses.findIndex(c => c.id === plan.corpse.id);
         if (ci !== -1) self.corpses.splice(ci, 1);
         self.buriedCount = (self.buriedCount || 0) + (plan.corpse.specialBurial === 'twins' ? 2 : 1);
-        let loot = plan.corpse.loot + (uncleConsumeObject(self, 'bury_bonus') ? 2 : 0); // 道具[金牙]
+        let buryRank = getCardRank(plan.corpse, 'bury');
+        let loot = plan.corpse.loot + (buryRank >= 1 && uncleConsumeObject(self, 'bury_bonus') ? 2 * buryRank : 0); // 道具[金牙]：2F×埋葬等级
         if (plan.slotIsOwn) {
             tuckCorpse(plan.slot, plan.corpse);
             addUncleCash(self, loot);
             aiThink(self, `${self.name}${payLine(pay)}把 ${plan.corpse.name} 埋进了自家 [${plan.slot.card.annexName}]，搜出 ${loot}F。`);
         } else {
-            // 埋到玩家别馆下：平分赃款（原版规则）
+            // 埋到其他玩家别馆下：与别馆所有者平分赃款（原版规则）
             let mine = Math.ceil(loot / 2), yours = loot - mine;
             plan.slot.buried.push({ ...plan.corpse, buriedByUncle: self.idx });
             if (plan.corpse.specialBurial === 'twins') plan.slot.buried.push({ name: '双胞胎之二', loot: 0, isTwinPlaceholder: true, color: plan.corpse.color, buriedByUncle: self.idx });
             addUncleCash(self, mine);
-            addPlayerCash(yours);
-            logMessage("AI", `${self.name}把 ${plan.corpse.name} 埋进了你的 [${plan.slot.card.annexName}] 下——按规矩与你平分：他 ${mine}F，你 ${yours}F。`, "ai");
+            if (plan.rivalOwner === 'player') {
+                addPlayerCash(yours);
+                logMessage("AI", `${self.name}把 ${plan.corpse.name} 埋进了你的 [${plan.slot.card.annexName}] 下——按规矩与你平分：他 ${mine}F，你 ${yours}F。`, "ai");
+            } else if (plan.rivalOwner) {
+                addUncleCash(plan.rivalOwner, yours);
+                logMessage("AI", `${self.name}把 ${plan.corpse.name} 埋进了${plan.rivalOwner.name}的 [${plan.slot.card.annexName}] 下——两人平分：${mine}F / ${yours}F。`, "ai");
+            }
         }
         playEffect('bury', `+${loot}F`, anchor('uncle-box-' + self.idx) || document.querySelector('.ai-status-box'));
         uncleSay(self, 'bury');
@@ -2329,19 +2362,36 @@ function morningStepPolice() {
 function morningStepRent() {
     logMessage("系统", "房客退房结算房租...", "system");
     let gardenCount = player.annexes.filter(a => a.card.annexName.includes("花园")).length;
-    let playerRentBonus = gardenCount * 2 + (roundEffects.playerExtraRent || 0);
-    if (playerRentBonus > 0) {
-        addPlayerCash(playerRentBonus);
-        logMessage("玩家", `别馆/道具在退房阶段带来额外 ${playerRentBonus}F。`, "player");
-        playEffect('rent', `+${playerRentBonus}F`, document.querySelector('.player-wealth-box'));
+    if (gardenCount > 0) {
+        addPlayerCash(gardenCount * 2);
+        logMessage("玩家", `别馆 [花园] 在退房阶段带来额外 ${gardenCount * 2}F。`, "player");
+        playEffect('rent', `+${gardenCount * 2}F`, document.querySelector('.player-wealth-box'));
     }
-    
-    // 叔叔的[花园类]道具：退房阶段有自己房间住人时打出（+2F）
+
+    // 叔叔的[蛋糕]道具：退房阶段自己房间有等级≥1住客时打出（2F × 最高住宿等级）
     aiUncles.forEach(u => {
-        if (rooms.some(r => isAIRoom(r) && r.key === u.idx && r.occupant)) {
-            if (uncleConsumeObject(u, 'extra_rent')) addUncleCash(u, 2);
+        let myGuests = rooms.filter(r => isAIRoom(r) && r.key === u.idx && r.occupant && getCardRank(r.occupant, 'bribe') >= 1);
+        if (myGuests.length > 0) {
+            let best = myGuests.reduce((m, r) => getCardRank(r.occupant, 'bribe') > getCardRank(m.occupant, 'bribe') ? r : m, myGuests[0]);
+            if (uncleConsumeObject(u, 'extra_rent')) {
+                let gain = 2 * getCardRank(best.occupant, 'bribe');
+                addUncleCash(u, gain);
+                logMessage("AI", `${u.name}的[蛋糕]招待了 ${best.occupant.name}，离店时多收 ${gain}F。`, "ai");
+            }
         }
     });
+
+    // 玩家[蛋糕]兑现：被招待的住客「离店」时支付 2F×等级（中途被杀/被拉拢的不会走到这里=作废）
+    function payCakeIfTreated(card) {
+        let ci = (roundEffects.cakeTargets || []).findIndex(t => t.id === card.id);
+        if (ci !== -1) {
+            let t = roundEffects.cakeTargets.splice(ci, 1)[0];
+            addPlayerCash(2 * t.rank);
+            logMessage("道具", `[蛋糕] ${t.name} 离店——你获得 ${2 * t.rank}F。`, "player");
+            playEffect('rent', `+${2 * t.rank}F`, document.querySelector('.player-wealth-box'));
+        }
+        delete card.hasCoffee; // [咖啡]随住客离店一并弃置
+    }
 
     rooms.forEach(room => {
         if (room.occupant) {
@@ -2356,6 +2406,7 @@ function morningStepRent() {
                 logMessage("AI", `${u.name}名下 ${room.id} 号客房退租，他获得 ${rent}F。`, "ai");
             }
 
+            payCakeIfTreated(room.occupant);
             exitStack.push(room.occupant);
             room.occupant = null;
         }
@@ -2368,6 +2419,7 @@ function morningStepRent() {
             addPlayerCash(rent);
             logMessage("玩家", `你的拖车「${a.card.name.split(' (')[0]}」住客退房，获得 ${rent}F。`, "player");
             playEffect('rent', `+${rent}F`, document.getElementById('player-annexes'));
+            payCakeIfTreated(a.occupant);
             exitStack.push(a.occupant);
             a.occupant = null;
         }
@@ -2377,6 +2429,7 @@ function morningStepRent() {
             let rent = 1 + (roundEffects.extraRent || 0);
             addUncleCash(u, rent);
             logMessage("AI", `${u.name}的拖车住客退房，他获得 ${rent}F。`, "ai");
+            payCakeIfTreated(a.occupant);
             exitStack.push(a.occupant);
             a.occupant = null;
         }
@@ -2706,8 +2759,7 @@ function tuckCorpse(slot, corpse) {
 
 // 埋尸掠夺结算（含金牙加成与大胡子女士的平分特殊埋葬）
 function awardBuryLoot(corpse, annexName, autoBishop) {
-    let loot = corpse.loot + (objectEffects.buryBonus || 0);
-    objectEffects.buryBonus = 0;
+    let loot = corpse.loot + consumeGoldTeeth(corpse);
     let prefix = autoBishop ? '（大主教技能）' : '';
     if (corpse.specialBurial === 'bearded') {
         let mine = Math.ceil(loot / 2);
@@ -3365,16 +3417,37 @@ function playObject(instanceId) {
     playEffect('object', obj.name, document.getElementById('player-objects-section'));
 
     if (obj.effect === 'extra_rent') {
-        roundEffects.playerExtraRent += 2;
+        // 原版[蛋糕]：放在一名住客上，其离店时获得 2F × 住宿等级；若中途被杀/被拉拢则作废
+        let cands = allOccupiedSpots().map(s => s.occupant).filter(c => getCardRank(c, 'bribe') >= 1);
+        if (cands.length === 0) {
+            player.objects.splice(idx, 0, obj); // 没有可放置的住客：道具退回
+            logMessage("道具", "[蛋糕] 旅馆里没有等级≥1的住客可以招待，蛋糕先收回。", "player");
+            renderUI();
+            return;
+        }
+        let best = cands.reduce((m, c) => getCardRank(c, 'bribe') > getCardRank(m, 'bribe') ? c : m, cands[0]);
+        roundEffects.cakeTargets.push({ id: best.id, rank: getCardRank(best, 'bribe'), name: best.name });
+        logMessage("道具", `[蛋糕] 招待了 ${best.name}（等级 ${getCardRank(best, 'bribe')}）——他退房离店时你将获得 ${2 * getCardRank(best, 'bribe')}F。`, "player");
     } else if (obj.effect === 'bury_bonus') {
-        objectEffects.buryBonus += 2;
+        objectEffects.goldTeeth = (objectEffects.goldTeeth || 0) + 1;
+        logMessage("道具", "[金牙] 已备好钳子——下一次埋葬等级≥1的尸体时，额外掠夺 2F × 其埋葬等级。", "player");
     } else if (obj.effect === 'force_police') {
         roundEffects.forceInvestigation = true;
     } else if (obj.effect === 'hide_corpse') {
         roundEffects.protectedCorpses += 1;
     } else if (obj.effect === 'coffee') {
-        addPlayerCash(2);
-        logMessage("道具", "[咖啡] 立刻获得 2F。", "player");
+        // 原版[咖啡]：放在一名住客上，立得 1F × 住宿等级；该住客不能再被下毒
+        let cands = allOccupiedSpots().map(s => s.occupant).filter(c => getCardRank(c, 'bribe') >= 1 && !c.hasCoffee);
+        if (cands.length === 0) {
+            player.objects.splice(idx, 0, obj);
+            logMessage("道具", "[咖啡] 旅馆里没有等级≥1的住客可以招待，咖啡先收回。", "player");
+            renderUI();
+            return;
+        }
+        let best = cands.reduce((m, c) => getCardRank(c, 'bribe') > getCardRank(m, 'bribe') ? c : m, cands[0]);
+        best.hasCoffee = true;
+        addPlayerCash(getCardRank(best, 'bribe'));
+        logMessage("道具", `[咖啡] 招待了 ${best.name}：立刻获得 ${getCardRank(best, 'bribe')}F；他本轮不能被下毒。`, "player");
     } else if (obj.effect === 'return_build') {
         objectEffects.returnHelpersFor.build = true;
     } else if (obj.effect === 'return_bribe') {
@@ -3400,7 +3473,8 @@ function playObject(instanceId) {
         let corpse = player.corpses.shift();
         if (corpse) removedStack.push(corpse);
     } else if (obj.effect === 'poison') {
-        let targets = rooms.filter(r => isOpenRoom(r) && r.occupant);
+        // 原版：喝过[咖啡]的住客不能被下毒
+        let targets = rooms.filter(r => isOpenRoom(r) && r.occupant && !r.occupant.hasCoffee);
         targets.sort((a, b) => (b.occupant.loot || 0) - (a.occupant.loot || 0));
         if (targets[0]) {
             let victim = targets[0].occupant;
