@@ -1088,6 +1088,17 @@ body {
     color: #ef5350;
 }
 
+/* 拖车住客徽章（嘉年华扩展：拖车视同客房） */
+.trailer-occupant {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #ffe082;
+    background: rgba(255, 167, 38, 0.12);
+    border: 1px dashed rgba(255, 167, 38, 0.45);
+    border-radius: 4px;
+    padding: 3px 6px;
+    text-align: center;
+}
 /* 多人局：其他 AI 叔叔面板 */
 .opponents-box {
     padding: 14px 16px;
@@ -1136,6 +1147,113 @@ body {
     gap: 4px 10px;
     font-size: 11.5px;
     color: #cfd8dc;
+}
+
+/* 对手牌桌：手牌背面 / 别馆芯片 / 未埋尸体 */
+.uncle-zone {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 5px;
+}
+.uncle-zone label {
+    flex: 0 0 30px;
+    font-size: 10px;
+    color: #78909c;
+    padding-top: 2px;
+}
+.uncle-zone .zone-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    align-items: center;
+}
+.zone-empty { font-size: 10px; color: #546e7a; }
+.mini-back {
+    font-size: 15px;
+    color: #5c6bc0;
+    line-height: 1;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+.mini-more { font-size: 10px; color: #9fa8da; }
+.mini-corpse { font-size: 12px; }
+.uncle-annex-chip {
+    font-size: 10px;
+    color: #ffe082;
+    background: rgba(255, 167, 38, 0.10);
+    border: 1px solid rgba(255, 167, 38, 0.35);
+    border-radius: 3px;
+    padding: 2px 5px;
+    white-space: nowrap;
+}
+.uncle-annex-chip.clickable { cursor: pointer; }
+.uncle-annex-chip.highlight {
+    border-color: #ffca28;
+    box-shadow: 0 0 8px rgba(255, 202, 40, 0.45);
+    animation: chip-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes chip-pulse { from { transform: scale(1); } to { transform: scale(1.07); } }
+
+/* 回合聚光灯：当前行动者的牌桌区发光 + 思考指示 */
+.uncle-card.active-turn {
+    border-left-color: #ffca28;
+    box-shadow: 0 0 14px rgba(255, 202, 40, 0.25);
+}
+.uncle-card.thinking .uncle-name::after {
+    content: ' 🤔';
+    animation: think-blink 0.9s ease-in-out infinite alternate;
+}
+@keyframes think-blink { from { opacity: 0.35; } to { opacity: 1; } }
+
+/* 座位顺序条 */
+.seat-order-bar {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 6px 10px;
+    font-size: 11.5px;
+}
+.seat-chip {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 12px;
+    padding: 2px 9px;
+    color: #b0bec5;
+    transition: all .25s;
+}
+.seat-chip.host { border-color: #ef9a9a; }
+.seat-chip.active {
+    background: rgba(255, 202, 40, 0.18);
+    border-color: #ffca28;
+    color: #ffe082;
+    transform: scale(1.06);
+}
+.seat-chip.human { font-weight: 700; }
+.seat-arrow { color: #546e7a; }
+
+/* 卡牌飞行（桌面感：卡从一处飞到另一处） */
+.fly-card {
+    position: fixed;
+    z-index: 4000;
+    width: 64px;
+    height: 88px;
+    border-radius: 6px;
+    background: linear-gradient(145deg, #283593, #1a237e);
+    border: 2px solid #7986cb;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #e8eaf6;
+    text-align: center;
+    padding: 4px;
+    pointer-events: none;
+    transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.65s;
+}
+@media (prefers-reduced-motion: reduce) {
+    .fly-card { transition: none; display: none; }
 }
 
 /* 设置：叔叔②③难度下拉 */

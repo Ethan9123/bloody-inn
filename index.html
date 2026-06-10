@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <!-- 引入Lucide图标 -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
     <div id="setup-screen" class="screen">
@@ -36,10 +36,10 @@
                 <div class="setup-group">
                     <label>叔叔①难度</label>
                     <div class="btn-toggle-group">
-                        <button id="btn-diff-silly" class="btn btn-toggle active" onclick="setDifficulty('silly')" title="只盯着钱、性格保守的策略AI">傻叔叔 (只看钱)</button>
-                        <button id="btn-diff-scheming" class="btn btn-toggle" onclick="setDifficulty('scheming')" title="爱拉拢拆台，结算时拉拢堆额外计分">阴险叔叔 (+拉拢分)</button>
-                        <button id="btn-diff-murderous" class="btn btn-toggle" onclick="setDifficulty('murderous')" title="嗜杀，结算时刺杀等级额外计分">嗜血叔叔 (+刺杀分)</button>
-                        <button id="btn-diff-mastermind" class="btn btn-toggle" onclick="setDifficulty('mastermind')" title="审时度势：抢劫高价旅客、断你财路、扩张地盘">策略叔叔 (真人级)</button>
+                        <button id="btn-diff-silly" class="btn btn-toggle active" onclick="setDifficulty('silly')" title="保守随性、决策噪声大——和新手同桌的感觉">傻叔叔 (随性)</button>
+                        <button id="btn-diff-scheming" class="btn btn-toggle" onclick="setDifficulty('scheming')" title="爱拉拢抢人、专拆你的台">阴险叔叔 (爱抢人)</button>
+                        <button id="btn-diff-murderous" class="btn btn-toggle" onclick="setDifficulty('murderous')" title="嗜杀，敢屯尸体冒警察的险">嗜血叔叔 (嗜杀)</button>
+                        <button id="btn-diff-mastermind" class="btn btn-toggle" onclick="setDifficulty('mastermind')" title="审时度势：抢肥羊、断财路、扩地盘、稳落袋——与你同规则的老手">策略叔叔 (真人级)</button>
                         <button id="btn-diff-ml" class="btn btn-toggle" onclick="setDifficulty('ml')" title="自我对弈+进化策略学到的权重：更重拆台、更早存钱、后期狠抢">学习叔叔 (ML调优)</button>
                     </div>
                     <div id="extra-ai-diffs" class="extra-ai-diffs"></div>
@@ -94,6 +94,9 @@
                 <button class="btn btn-secondary" onclick="toggleHelpModal()"><i data-lucide="help-circle"></i> 规则说明</button>
             </div>
         </header>
+
+        <!-- 座位顺序条：像在桌边一样看到这一轮轮到谁 -->
+        <div class="seat-order-bar glass" id="seat-order"></div>
 
         <!-- 主游戏面板 -->
         <div class="main-layout">
@@ -209,15 +212,15 @@
                     <h3><i data-lucide="bot"></i> <span id="ai-status-title">邪恶叔叔 AI 状态</span></h3>
                     <div class="ai-stats-grid">
                         <div class="ai-stat-card">
-                            <span class="stat-name">拉拢堆 (Bribe)</span>
+                            <span class="stat-name">手牌·帮工 (Hand)</span>
                             <span class="stat-value" id="ai-stat-bribe">0 张</span>
                         </div>
                         <div class="ai-stat-card">
-                            <span class="stat-name">刺杀堆 (Kill)</span>
-                            <span class="stat-value" id="ai-stat-kill">0 个</span>
+                            <span class="stat-name">别馆·埋尸位 (Annex)</span>
+                            <span class="stat-value" id="ai-stat-kill">1 座</span>
                         </div>
                         <div class="ai-stat-card">
-                            <span class="stat-name">别馆房间 (Rooms)</span>
+                            <span class="stat-name">名下客房 (Rooms)</span>
                             <span class="stat-value" id="ai-stat-rooms">2 间</span>
                         </div>
                         <div class="ai-stat-card">
@@ -411,6 +414,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=7"></script>
+    <script src="script.js?v=8"></script>
 </body>
 </html>

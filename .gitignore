@@ -26,3 +26,6 @@ tools/
 
 # ML 优化器的原始运行日志（可复现产物；最终权重已存入 ml/best_weights.json）
 ml/results.jsonl
+
+# 本地工作文件：从版权规则书 PDF 提取的文本（仅本地核对用，不公开）
+_rules_extract.txt

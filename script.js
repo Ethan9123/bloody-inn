@@ -131,7 +131,7 @@ const NOTABLE_TRAVELERS = [
     { name: "外科医生 (Surgeon)", role: "notable", color: "notable-gold", rank: 1, buildRank: 2, loot: 16, annexName: "实验室 (Laboratory)", annexDesc: "清晨退房时，若对手有未埋尸体，你获得 3F。", aptitude: "none" },
     { name: "银行家 (Banker)", role: "notable", color: "notable-gold", rank: 1, buildRank: 3, loot: 20, annexName: "保险库 (Safe)", annexDesc: "被动：对手获得超过40F上限的现金时，溢出部分归你。", aptitude: "none" },
     { name: "公证人 (Notary)", role: "notable", color: "notable-gold", rank: 3, buildRank: 1, loot: 20, annexName: "书房 (Study)", annexDesc: "对手洗钱/兑票时，你获得 1F。", aptitude: "none" },
-    { name: "药剂师 (Pharmacist)", role: "notable", color: "notable-gold", rank: 1, buildRank: 3, loot: 20, annexName: "药房 (Pharmacy)", annexDesc: "清晨若你手牌至少 3 张，获得 2F。", aptitude: "none" },
+    { name: "药剂师 (Pharmacist)", role: "notable", color: "notable-gold", rank: 1, buildRank: 3, loot: 20, annexName: "药房 (Pharmacy)", annexDesc: "清晨退房时，若另一名玩家手中帮工不少于 3 张，获得 2F。", aptitude: "none" },
     // 以下 8 张为本数字版自制名流（该中文PNP未收录其余名流），用于补足 14 张以替换贵族；效果均已实装
     { name: "律师 (Lawyer)", role: "notable", color: "notable-gold", rank: 0, buildRank: 1, loot: 4, annexName: "档案室 (Archive)", annexDesc: "建造时获得 4F。", aptitude: "none" },
     { name: "医生 (Doctor)", role: "notable", color: "notable-gold", rank: 1, buildRank: 1, loot: 6, annexName: "诊所 (Clinic)", annexDesc: "警察调查时，你可以少处理 1 具未埋尸体。", aptitude: "none" },
@@ -228,24 +228,36 @@ let player = {
     objects: []
 };
 
-// AI 状态 (邪恶叔叔)
+// AI 状态 (邪恶叔叔)——占位字面量，startGame 时由 makeUncle 重建（真规则：含手牌/别馆）
 let ai = {
-    cash: 5,
-    checks: 1,
-    keys: [3, 4], // AI占用的客房ID，初始2间房间（房号3和4）
-    hasServiceOn: 3, // 礼宾服务在3房
-    corpses: [], // AI未埋尸体
-    bribePile: [], // 拉拢堆 (计分)
-    killPile: []  // 刺杀堆 (计分)
+    idx: 0, name: '邪恶叔叔', difficulty: 'silly',
+    cash: 5, checks: 1, keys: [3, 4],
+    hand: [], annexes: [], corpses: [], buriedCount: 0,
+    bribePile: [], killPile: []
 };
 
 // AI 叔叔数组：ai 始终指向第一个（向后兼容旧的单 AI 代码路径）
 let aiUncles = [ai];
 const UNCLE_NAMES = ['邪恶叔叔', '阴狠表哥', '贪婪姑父', '冷血舅舅'];
+// 每个玩家（含 AI）的初始资产别馆：自带 1 个埋尸坑的大篷棚车（原版 Barn）
+function makeBarnAnnex() {
+    return {
+        card: { name: "大篷车宿营地 (Barn)", role: "artisan", color: "artisan-red", rank: 1, loot: 0, annexName: "大篷棚车", annexDesc: "自带1个埋尸坑的初始资产别馆。", aptitude: "none" },
+        buried: []
+    };
+}
+// 真规则 AI：叔叔与人类同规则——有手牌（拉拢所得=帮工货币）、别馆（埋尸坑）、未埋尸体、付工资
 function makeUncle(idx, diff) {
     return {
         idx, difficulty: diff, name: UNCLE_NAMES[idx] || ('叔叔' + (idx + 1)),
-        cash: 5, checks: 1, keys: [], corpses: [], bribePile: [], killPile: []
+        cash: 5, checks: 1, keys: [],
+        hand: [],                   // 手牌（拉拢来的帮工）——对人类只显示张数（牌背）
+        annexes: [makeBarnAnnex()], // 别馆（含初始大篷车）
+        corpses: [],                // 未埋尸体（杀人后不再立刻拿钱！）
+        buriedCount: 0,             // 已埋尸体数（含埋进对手别馆的）
+        objects: [],                // 姑妈道具（参与轮抽）
+        grudge: null,               // T3: 记仇对象
+        bribePile: [], killPile: [] // 兼容残留引用（已弃用，保持空）
     };
 }
 // 房间归属辅助：room.key ∈ { 'player'(人类), 0/1/2(AI叔叔下标), 'neutral', 'closed' }
@@ -314,6 +326,69 @@ function syncAIKeys() {
     });
 }
 
+// 叔叔「已埋尸体数」（含埋进玩家别馆的；双胞胎计 2）——用于平局判定与[告解室]比较
+function uncleDisposedCount(u) {
+    if (typeof u.buriedCount === 'number') return u.buriedCount;
+    return (u.killPile || []).length;
+}
+// 玩家亲手埋的尸体数（含埋进叔叔别馆的；不含 AI 埋进玩家别馆的）
+let playerExtraBuried = 0;
+function playerBuriedCount() {
+    return player.annexes.reduce((s, a) => s + a.buried.filter(b => !b.buriedByUncle).length, 0) + playerExtraBuried;
+}
+
+// ==========================================
+// 拖车（嘉年华扩展）：原版规则中拖车视同客房——迎客必须填、可被刺杀/拉拢、警察计入、清晨 1F
+// （客房服务与丝绸厂除外）
+// ==========================================
+// 可迎客的拖车：下面没有尸体且当前无人占用（含所有玩家的拖车——原版迎客必须填）
+function eligibleTrailerSlots() {
+    let out = [];
+    player.annexes.forEach((slot, idx) => {
+        if (slot.card.isTrailer && slot.buried.length === 0 && !slot.occupant) out.push({ slot, idx, owner: 'player' });
+    });
+    aiUncles.forEach(u => (u.annexes || []).forEach((slot, idx) => {
+        if (slot.card.isTrailer && slot.buried.length === 0 && !slot.occupant) out.push({ slot, idx, owner: u.idx });
+    }));
+    return out;
+}
+
+// 所有被旅客占据的「旅馆位置」（开放客房 + 所有人的拖车），统一供刺杀/拉拢/警察/事件使用
+function allOccupiedSpots() {
+    let spots = [];
+    rooms.forEach(r => {
+        if (isOpenRoom(r) && r.occupant) {
+            spots.push({
+                kind: 'room', room: r, occupant: r.occupant,
+                label: `${r.id} 号房`, anchorId: 'room-' + r.id,
+                ownerKey: r.key,
+                clear() { r.occupant = null; }
+            });
+        }
+    });
+    player.annexes.forEach((a, i) => {
+        if (a.card.isTrailer && a.occupant) {
+            spots.push({
+                kind: 'trailer', annex: a, annexIndex: i, occupant: a.occupant,
+                label: `拖车「${a.card.name.split(' (')[0]}」`, anchorId: 'player-annexes',
+                ownerKey: 'player',
+                clear() { a.occupant = null; }
+            });
+        }
+    });
+    aiUncles.forEach(u => (u.annexes || []).forEach((a, i) => {
+        if (a.card.isTrailer && a.occupant) {
+            spots.push({
+                kind: 'trailer', annex: a, annexIndex: i, occupant: a.occupant,
+                label: `${u.name}的拖车`, anchorId: 'uncle-box-' + u.idx,
+                ownerKey: u.idx,
+                clear() { a.occupant = null; }
+            });
+        }
+    }));
+    return spots;
+}
+
 function openRoomCount() {
     return rooms.filter(isOpenRoom).length;
 }
@@ -364,6 +439,11 @@ function getAnnexCapacity(card) {
     if (card.name && card.name.includes("Barn")) return 1;
     if (card.isTrailer) return getCardRank(card, 'build');
     return getCardRank(card, 'build');
+}
+
+// 已占用的埋尸位：侏儒「侧放」不占容量（原版：埋了侏儒后该别馆仍可埋满额尸体）
+function effectiveBuried(slot) {
+    return slot.buried.filter(b => b.specialBurial !== 'dwarf').length;
 }
 
 // ==========================================
@@ -508,16 +588,13 @@ function startGame() {
 
     player.cash = 5;
     player.checks = 1;
-    player.annexes = [
-        {
-            card: { name: "大篷车宿营地 (Barn)", role: "artisan", color: "artisan-red", rank: 1, loot: 0, annexName: "大篷棚车", annexDesc: "自带1个埋尸坑的初始资产别馆。", aptitude: "none" },
-            buried: []
-        }
-    ];
+    player.annexes = [makeBarnAnnex()];
     player.corpses = [];
     player.objects = [];
+    playerExtraBuried = 0;
     if (expansionOptions.objects) {
         player.cash = 10; // 姑妈道具：起始现金 10F，道具通过轮抽获得、付款后再扣
+        aiUncles.forEach(u => u.cash = 10); // 原版：所有玩家起始 10F、各自轮抽付款
     }
 
     // 4. 随机座位顺序（玩家位置随机），主理人从座位 0 起每轮轮换
@@ -571,37 +648,69 @@ function finishObjectSetup() {
 let draftState = null;
 let paymentState = null;
 
+// AI 对道具的估值（用于轮抽挑选）：常用且 AI 会玩的道具更值钱
+const AI_OBJECT_VALUE = {
+    coffee: 5, extra_rent: 5, bury_bonus: 4.2, hide_corpse: 4, remove_corpse: 4,
+    catchup: 3.5, force_police: 3, poison: 2.5,
+};
+function aiObjectValue(o) {
+    return (AI_OBJECT_VALUE[o.effect] || 2) - o.cost * 0.8;
+}
+
 function startObjectDraft() {
     let deck = shuffleCards(OBJECT_CARDS.map(o => ({ ...o })));
     deck.forEach((o, i) => o.instanceId = `obj_${i}_${Math.random().toString(36).substr(2, 5)}`);
-    draftState = { deck, packetSizes: [4, 3, 2], step: 0, picked: [], packet: [] };
+    // 原版：每人发 4 张（其余回盒）；选 1 传左 ×3 轮，最后 1 张回盒
+    // packets[0] = 你的牌包，packets[1+i] = 叔叔 i 的牌包；每轮选完后整体向左传
+    let packets = [];
+    for (let p = 0; p < playerCount; p++) packets.push(deck.splice(0, 4));
+    draftState = { packets, step: 0, picked: [], aiPicked: aiUncles.map(() => []) };
     dealDraftPacket();
 }
 function dealDraftPacket() {
-    let size = draftState.packetSizes[draftState.step];
-    draftState.packet = draftState.deck.splice(0, size);
     renderDraftModal();
     document.getElementById('draft-modal').classList.remove('hidden');
 }
 function pickDraftCard(instanceId) {
     if (!draftState) return;
-    let idx = draftState.packet.findIndex(o => o.instanceId === instanceId);
+    let packet = draftState.packets[0];
+    let idx = packet.findIndex(o => o.instanceId === instanceId);
     if (idx === -1) return;
-    draftState.picked.push(draftState.packet.splice(idx, 1)[0]);
+    draftState.picked.push(packet.splice(idx, 1)[0]);
     playSound('object');
+
+    // 各叔叔同时从自己的牌包里挑一张（按 AI 估值）
+    aiUncles.forEach((u, i) => {
+        let p = draftState.packets[1 + i];
+        if (p && p.length > 0) {
+            p.sort((a, b) => aiObjectValue(b) - aiObjectValue(a));
+            draftState.aiPicked[i].push(p.shift());
+        }
+    });
+
+    // 传左：每人把剩余牌包传给下一位（你传给叔叔①，最后一位传回你）
+    draftState.packets.unshift(draftState.packets.pop());
+
     draftState.step++;
-    if (draftState.step < draftState.packetSizes.length) {
+    if (draftState.step < 3) {
         dealDraftPacket();
     } else {
         document.getElementById('draft-modal').classList.add('hidden');
+        // 叔叔们直接保留所选道具并付款（3 张至多 9F，从 10F 起始现金里扣）
+        aiUncles.forEach((u, i) => {
+            u.objects = draftState.aiPicked[i];
+            let cost = u.objects.reduce((s, o) => s + o.cost, 0);
+            u.cash = Math.max(0, 10 - cost);
+            logMessage("AI", `${u.name}在轮抽中留下了 ${u.objects.length} 张道具（花费 ${cost}F）。`, "ai");
+        });
         startObjectPayment();
     }
 }
 function renderDraftModal() {
-    const hints = ['从 4 张里选 1 张（其余 3 张传给下一位）', '从 3 张里选 1 张（其余 2 张传给下一位）', '从 2 张里选 1 张（剩下 1 张丢弃）'];
+    const hints = ['从 4 张里选 1 张（其余传给下家）', '从 3 张里选 1 张（这是上家传来的）', '从 2 张里选 1 张（剩下 1 张回盒）'];
     document.getElementById('draft-step-label').innerText = `轮抽 ${draftState.step + 1} / 3 · 已选 ${draftState.picked.length} 张`;
-    document.getElementById('draft-hint').innerText = hints[draftState.step];
-    document.getElementById('draft-cards').innerHTML = draftState.packet.map(o =>
+    document.getElementById('draft-hint').innerText = hints[draftState.step] + (playerCount > 1 ? ' · 叔叔们也在同步挑选' : '');
+    document.getElementById('draft-cards').innerHTML = draftState.packets[0].map(o =>
         `<button class="draft-card" onclick="pickDraftCard('${o.instanceId}')">
             <span class="draft-cost">${o.cost}F</span>
             <span class="draft-name">${o.name}</span>
@@ -673,9 +782,26 @@ function runPhaseWelcome() {
 }
 
 function welcomeGuestsSequentially() {
+    // 原版：开放客房与「无尸拖车」都必须安排旅客入住
     let emptyRooms = rooms.filter(r => isOpenRoom(r) && !r.occupant);
-    if (emptyRooms.length === 0) {
+    let emptyTrailers = eligibleTrailerSlots();
+    if (emptyRooms.length === 0 && emptyTrailers.length === 0) {
         finishWelcomePhase();
+        return;
+    }
+
+    // 只剩叔叔的拖车要填时：自动安排（强制入住，无选择意义）
+    if (emptyRooms.length === 0 && emptyTrailers.every(t => t.owner !== 'player')) {
+        let card = drawTravelerCard();
+        if (!card) { finishWelcomePhase(); return; }
+        let t = emptyTrailers[0];
+        t.slot.occupant = card;
+        let owner = aiUncles[t.owner];
+        logMessage("玩家", `${card.name} 被安排住进${owner.name}的拖车（按规矩拖车必须入住）。`, "player");
+        maybeRevealCarnieEvent(card);
+        triggerBarkerBonus(card);
+        renderUI();
+        setTimeout(welcomeGuestsSequentially, 250);
         return;
     }
 
@@ -703,7 +829,7 @@ function welcomeGuestsSequentially() {
             </div>
         </div>
         <div class="hint-line" id="welcome-hint">${isHumanHost()
-            ? `请把 <strong>${card.name}</strong> 安排进一间开放且空置的客房（点击客房）。`
+            ? `请把 <strong>${card.name}</strong> 安排进一间开放且空置的客房${eligibleTrailerSlots().length > 0 ? '或拖车（拖车也必须入住！）' : ''}（点击客房${eligibleTrailerSlots().length > 0 ? '/拖车' : ''}）。`
             : '主理人正在安排入住…'}</div>
         ${nextCard
             ? `<div class="next-peek">取走后下一位：<strong>${nextCard.name}</strong>（${getRankDisplay(nextCard)}）</div>`
@@ -732,16 +858,33 @@ function handleWelcomeRoomSelect(roomId) {
     setTimeout(welcomeGuestsSequentially, 250);
 }
 
+// 迎客：把旅客安排进自己的拖车（原版：无尸拖车必须入住；客房服务对拖车无效）
+function handleWelcomeTrailerSelect(annexIndex) {
+    if (currentPhase !== 'welcome' || !pendingWelcomeCard || !isHumanHost()) return;
+    let slot = player.annexes[annexIndex];
+    if (!slot || !slot.card.isTrailer || slot.occupant || slot.buried.length > 0) return;
+
+    slot.occupant = pendingWelcomeCard;
+    logMessage("玩家", `${pendingWelcomeCard.name} 被安排住进了你的拖车「${slot.card.name.split(' (')[0]}」（清晨退房时 +1F）。`, "player");
+    maybeRevealCarnieEvent(pendingWelcomeCard);
+    triggerBarkerBonus(slot.occupant);
+    playEffect('checkin', '拖车', document.getElementById('player-annexes'));
+    pendingWelcomeCard = null;
+    renderUI();
+    setTimeout(welcomeGuestsSequentially, 250);
+}
+
 function aiWelcomeGuests() {
     let emptyRooms = rooms.filter(r => isOpenRoom(r) && !r.occupant);
-    if (emptyRooms.length === 0) {
+    let emptyTrailers = eligibleTrailerSlots(); // 玩家的无尸拖车也必须入住（原版强制）
+    if (emptyRooms.length === 0 && emptyTrailers.length === 0) {
         finishWelcomePhase();
         return;
     }
-    
-    // 规则（Evil Uncle 单人模式）：查看牌堆顶等同空房数的旅客，最低等级塞玩家房、最高塞自己房、其余进中立房
+
+    // 规则（Evil Uncle 单人模式）：查看牌堆顶等同空位数的旅客，最低等级塞玩家房、最高塞自己房、其余进中立房
     let drawn = [];
-    for (let i = 0; i < emptyRooms.length; i++) {
+    for (let i = 0; i < emptyRooms.length + emptyTrailers.length; i++) {
         let card = drawTravelerCard();
         if (card) drawn.push(card);
     }
@@ -757,10 +900,11 @@ function aiWelcomeGuests() {
     let oppRooms = emptyRooms.filter(r => r.key === 'player' || (typeof r.key === 'number' && r.key !== host.idx));
     let neutralRooms = emptyRooms.filter(r => r.key === 'neutral');
 
-    // 单次分配，避免双计数器交叉导致的重复/漏发
+    // 单次分配，避免双计数器交叉导致的重复/漏发；拖车一律塞低等级（占用者可被抢，等级无关紧要）
     let assignments = [];
     let lo = 0, hi = drawn.length - 1;
     oppRooms.forEach(r => { if (lo <= hi) assignments.push({ room: r, card: drawn[lo++], kind: 'opp' }); });
+    emptyTrailers.forEach(t => { if (lo <= hi) assignments.push({ trailer: t.slot, trailerOwner: t.owner, card: drawn[lo++], kind: 'trailer' }); });
     ownRooms.forEach(r => { if (lo <= hi) assignments.push({ room: r, card: drawn[hi--], kind: 'own' }); });
     neutralRooms.forEach(r => { if (lo <= hi) assignments.push({ room: r, card: drawn[lo++], kind: 'neutral' }); });
 
@@ -772,17 +916,24 @@ function aiWelcomeGuests() {
             setTimeout(finishWelcomePhase, 700);
             return;
         }
-        let { room, card, kind } = assignments[idx++];
-        room.occupant = card;
+        let { room, trailer, trailerOwner, card, kind } = assignments[idx++];
         let rank = getCardRank(card, 'bribe');
-        let ownerName = isHumanRoom(room) ? '您' : (uncleOfRoom(room) ? uncleOfRoom(room).name : '中立');
-        if (kind === 'opp') {
-            logMessage("AI", `${host.name}故意把等级 ${rank} 的 ${card.name} 塞进了 ${ownerName} 的 ${room.id} 号房。`, "ai");
-        } else if (kind === 'own') {
-            logMessage("AI", `${host.name}为自己的 ${room.id} 号房安排了等级 ${rank} 的高价值 ${card.name}。`, "ai");
-        } else {
-            logMessage("AI", `${card.name}（等级 ${rank}）被安排在 ${room.id} 号中立客房入住。`, "ai");
+        if (kind === 'trailer') {
+            trailer.occupant = card;
+            let whose = trailerOwner === 'player' ? '你的'
+                : (aiUncles[trailerOwner] === host ? '自己的' : `${aiUncles[trailerOwner].name}的`);
+            logMessage("AI", `${host.name}按规矩把 ${card.name}（等级 ${rank}）安排进了${whose}拖车。`, "ai");
+            maybeRevealCarnieEvent(card);
+            triggerBarkerBonus(card);
+            renderUI();
+            playEffect('checkin', '拖车', trailerOwner === 'player' ? document.getElementById('player-annexes') : document.getElementById('uncle-box-' + trailerOwner));
+            setTimeout(placeNext, 480);
+            return;
         }
+        room.occupant = card;
+        let ownerName = isHumanRoom(room) ? '您' : (uncleOfRoom(room) ? uncleOfRoom(room).name : '中立');
+        // 拟人：主理人不播报意图——只报客观事实（想看穿他的算盘？自己观察）
+        logMessage("AI", `${host.name}把 ${card.name}（等级 ${rank}）安排进了${ownerName === '您' ? '您' : ownerName}的 ${room.id} 号房。`, "ai");
         maybeRevealCarnieEvent(card);
         triggerBarkerBonus(card);
         triggerRoomServiceImmediate(room);
@@ -825,8 +976,7 @@ function maybeRevealCarnieEvent(card) {
 }
 
 function anyCarnieInPlay() {
-    return rooms.some(r => isOpenRoom(r) && r.occupant && r.occupant.role === 'carnie')
-        || player.annexes.some(a => a.card.isTrailer && a.occupant && a.occupant.role === 'carnie');
+    return allOccupiedSpots().some(s => s.occupant.role === 'carnie');
 }
 
 function resolveCarnieEvent() {
@@ -887,7 +1037,7 @@ function triggerRoomServiceImmediate(room) {
 
 function finishWelcomePhase() {
     pendingWelcomeCard = null;
-    let occupiedCount = rooms.filter(r => isOpenRoom(r) && r.occupant).length;
+    let occupiedCount = allOccupiedSpots().length; // 客房 + 拖车（原版：拖车视同客房）
     renderUI();
 
     if (finalRoundPending && occupiedCount < playerCount) {
@@ -929,7 +1079,9 @@ function runActionStep() {
         document.getElementById('action-box-title').innerText = `${u.name}正在执行行动...`;
         document.getElementById('action-box-desc').innerText = `等待 ${u.name} 出手…`;
         enableMainActionButtons(false);
-        setTimeout(() => aiStrategicAction(u), 1200); // 所有难度都用策略引擎（按性格与阶段加权）
+        // 拟人：思考时间随机浮动（终局更谨慎想更久），不再是机械的固定节拍
+        let thinkMs = 750 + Math.random() * 1300 + (getRoundPhase() === 'late' ? 450 : 0);
+        setTimeout(() => aiStrategicAction(u), thinkMs);
     }
 }
 
@@ -1048,7 +1200,7 @@ function confirmTargets() {
         let totalCapacity = 0;
         player.annexes.forEach(annex => {
             let maxBurial = getAnnexCapacity(annex.card);
-            totalCapacity += (maxBurial - annex.buried.length);
+            totalCapacity += (maxBurial - effectiveBuried(annex));
         });
         
         if (totalCapacity < pendingAction.targets.length) {
@@ -1074,13 +1226,15 @@ function finishPlayerAction() {
     }
 
     if (pendingAction.type === 'bury' && pendingAction.target && pendingAction.target.annexIndex !== undefined) {
-        let targetSlot = player.annexes[pendingAction.target.annexIndex];
+        let targetSlot = pendingAction.target.uncleIdx !== undefined
+            ? aiUncles[pendingAction.target.uncleIdx].annexes[pendingAction.target.annexIndex]
+            : player.annexes[pendingAction.target.annexIndex];
         if (!targetSlot) {
             logMessage("系统", "目标别馆不存在，请取消后重新选择埋尸位置。", "warn");
             return;
         }
         let maxBurial = getAnnexCapacity(targetSlot.card);
-        if (targetSlot.buried.length >= maxBurial) {
+        if (effectiveBuried(targetSlot) >= maxBurial) {
             logMessage("系统", "目标别馆容量已满，请取消后重新选择埋尸位置。", "warn");
             return;
         }
@@ -1121,20 +1275,37 @@ function finishPlayerAction() {
 
     // 执行对应的实体变化 (支持多目标处理)
     let targets = pendingAction.targets || [pendingAction.target];
+    // 目标可能在客房、拖车（原版视同客房）或小酒馆——统一清除占位
+    const clearGuestSpot = (t) => {
+        let room = rooms.find(r => r.occupant && r.occupant.id === t.id);
+        if (room) { room.occupant = null; return { anchor: document.getElementById('room-' + room.id), ownerKey: room.key }; }
+        let trailer = player.annexes.find(a => a.card.isTrailer && a.occupant && a.occupant.id === t.id);
+        if (trailer) { trailer.occupant = null; return { anchor: document.getElementById('player-annexes'), ownerKey: 'player' }; }
+        for (let u of aiUncles) {
+            let tr = (u.annexes || []).find(a => a.card.isTrailer && a.occupant && a.occupant.id === t.id);
+            if (tr) { tr.occupant = null; return { anchor: document.getElementById('uncle-box-' + u.idx), ownerKey: u.idx }; }
+        }
+        let bIdx = bistro.findIndex(p => p.id === t.id);
+        if (bIdx !== -1) bistro.splice(bIdx, 1);
+        return { anchor: document.getElementById('player-action-box'), ownerKey: null };
+    };
+    // 玩家动了某位叔叔地盘上的客人 -> 那位叔叔记仇 + 当场抱怨（拟人）
+    const angerOwner = (ownerKey) => {
+        if (typeof ownerKey !== 'number' || !aiUncles[ownerKey]) return;
+        let u = aiUncles[ownerKey];
+        u.grudge = { vs: 'player', heat: Math.min(6, ((u.grudge && u.grudge.heat) || 0) + 2) };
+        uncleReact('playerRobMyRoom', u);
+    };
     if (pendingAction.type === 'bribe') {
         targets.forEach(t => {
-            let room = rooms.find(r => r.occupant && r.occupant.id === t.id);
-            if (room) {
-                room.occupant = null;
-            } else {
-                let bIdx = bistro.findIndex(p => p.id === t.id);
-                if (bIdx !== -1) bistro.splice(bIdx, 1);
-            }
+            let spot = clearGuestSpot(t);
+            angerOwner(spot.ownerKey);
             player.hand.push(t);
             logMessage("玩家", `成功拉拢帮凶 ${t.name} 入手！`, "player");
-            playEffect('bribe', t.name, room ? document.getElementById('room-' + room.id) : document.getElementById('player-action-box'));
+            playEffect('bribe', t.name, spot.anchor);
+            flyCard(spot.anchor, document.getElementById('player-hand'), '🤝 ' + t.name.split(' (')[0]);
         });
-    } 
+    }
     else if (pendingAction.type === 'build') {
         let singleTarget = targets[0] || pendingAction.target;
         let handIdx = player.hand.findIndex(h => h.id === singleTarget.id);
@@ -1149,13 +1320,8 @@ function finishPlayerAction() {
     } 
     else if (pendingAction.type === 'kill') {
         targets.forEach(t => {
-            let room = rooms.find(r => r.occupant && r.occupant.id === t.id);
-            if (room) {
-                room.occupant = null;
-            } else {
-                let bIdx = bistro.findIndex(p => p.id === t.id);
-                if (bIdx !== -1) bistro.splice(bIdx, 1);
-            }
+            let spot = clearGuestSpot(t);
+            angerOwner(spot.ownerKey);
             t.isDead = true;
             if (objectEffects.well) {
                 removedStack.push(t);
@@ -1165,11 +1331,30 @@ function finishPlayerAction() {
                 player.corpses.push(t);
                 logMessage("玩家", `刺杀了 ${t.name}！尸体已移入您的未埋尸体堆。`, "player");
             }
-            playEffect('kill', t.name, room ? document.getElementById('room-' + room.id) : document.getElementById('player-action-box'));
+            playEffect('kill', t.name, spot.anchor);
         });
-    } 
+        uncleReact('playerKill');
+    }
     else if (pendingAction.type === 'bury') {
-        if (pendingAction.target && pendingAction.target.annexIndex !== undefined) {
+        if (pendingAction.target && pendingAction.target.uncleIdx !== undefined) {
+            // 埋进叔叔的别馆：原版规则——与别馆主人平分尸体口袋里的钱
+            let owner = aiUncles[pendingAction.target.uncleIdx];
+            let targetSlot = owner.annexes[pendingAction.target.annexIndex];
+            let corpse = pendingAction.target.corpse;
+            let cIdx = player.corpses.findIndex(c => c.id === corpse.id);
+            if (cIdx !== -1) player.corpses.splice(cIdx, 1);
+            targetSlot.buried.push({ ...corpse, buriedByPlayer: true });
+            if (corpse.specialBurial === 'twins') targetSlot.buried.push({ name: '双胞胎之二', loot: 0, isTwinPlaceholder: true, color: corpse.color, buriedByPlayer: true });
+            playerExtraBuried += (corpse.specialBurial === 'twins' ? 2 : 1);
+            let loot = corpse.loot + (objectEffects.buryBonus || 0);
+            objectEffects.buryBonus = 0;
+            let mine = Math.ceil(loot / 2), theirs = loot - mine;
+            addPlayerCash(mine);
+            addUncleCash(owner, theirs);
+            logMessage("玩家", `你把 ${corpse.name} 埋进了 ${owner.name} 的 [${targetSlot.card.annexName}]——平分赃款：你 ${mine}F，他 ${theirs}F。`, "player");
+            uncleReact('playerBuryInMine', owner);
+            playEffect('bury', `+${mine}F`, document.getElementById('uncle-box-' + owner.idx));
+        } else if (pendingAction.target && pendingAction.target.annexIndex !== undefined) {
             let targetSlot = player.annexes[pendingAction.target.annexIndex];
             let corpse = pendingAction.target.corpse;
             let cIdx = player.corpses.findIndex(c => c.id === corpse.id);
@@ -1182,8 +1367,9 @@ function finishPlayerAction() {
                 let targetSlot = null;
                 for (let idx = 0; idx < player.annexes.length; idx++) {
                     let annex = player.annexes[idx];
+                    if (annex.card.isTrailer && annex.occupant) continue; // 占用中的拖车不能埋
                     let maxBurial = getAnnexCapacity(annex.card);
-                    if (annex.buried.length + needed <= maxBurial) {
+                    if (effectiveBuried(annex) + needed <= maxBurial) {
                         targetSlot = annex;
                         break;
                     }
@@ -1471,20 +1657,31 @@ function handleCorpseSelect(corpseCard) {
         toggleSelectedTarget(corpseCard);
     } else {
         pendingAction.targetCorpse = corpseCard;
-        // 寻找有容量空位的别馆
+        // 寻找有容量空位的别馆（占用中的拖车不能埋——原版只允许"无人占用的拖车"）
         let availableSlots = [];
-        player.annexes.forEach((annex, index) => {
-            let maxBurial = getAnnexCapacity(annex.card);
-            if (annex.buried.length < maxBurial) availableSlots.push(index);
-        });
-        
-        if (availableSlots.length === 0) {
-            logMessage("系统", "您的别馆全满，没有空间埋这具尸体！", "warn");
+        let isBearded = corpseCard.specialBurial === 'bearded';
+        if (!isBearded) {
+            player.annexes.forEach((annex, index) => {
+                if (annex.card.isTrailer && annex.occupant) return;
+                let maxBurial = getAnnexCapacity(annex.card);
+                if (effectiveBuried(annex) < maxBurial) availableSlots.push(index);
+            });
+        }
+        // 对手的别馆也可以埋（平分赃款）；大胡子女士只能埋别人家
+        let need = corpseCard.specialBurial === 'twins' ? 2 : 1;
+        let uncleSlotAvailable = aiUncles.some(u => (u.annexes || []).some(a =>
+            !(a.card.isTrailer && a.occupant) && effectiveBuried(a) + need <= getAnnexCapacity(a.card)));
+
+        if (availableSlots.length === 0 && !uncleSlotAvailable) {
+            logMessage("系统", isBearded ? "大胡子女士必须埋进对手的别馆，但对手没有空位——无法埋葬！" : "所有别馆全满，没有空间埋这具尸体！", "warn");
             cancelPendingAction();
             return;
         }
-        
-        logMessage("系统", "已选定一具尸体。现在请点击下方一个有空闲容量的别馆。", "system");
+
+        logMessage("系统", isBearded
+            ? "大胡子女士必须埋进【对手】的别馆（平分赃款）。请点击对手牌桌上的别馆。"
+            : "已选定一具尸体。点击你的别馆，或对手牌桌上的别馆（与对方平分赃款）。", "system");
+        renderUI(); // 让对手牌桌的可埋别馆亮起
         document.querySelectorAll('.annex-slot-container').forEach((el, idx) => {
             if (availableSlots.includes(idx)) el.classList.add('highlight');
         });
@@ -1496,10 +1693,18 @@ function handleAnnexSlotSelect(index) {
 
     let targetSlot = player.annexes[index];
     if (!targetSlot) return;
+    if (pendingAction.targetCorpse && pendingAction.targetCorpse.specialBurial === 'bearded') {
+        logMessage("系统", "大胡子女士必须埋进【对手】的别馆（点击对手牌桌）。", "warn");
+        return;
+    }
+    if (targetSlot.card.isTrailer && targetSlot.occupant) {
+        logMessage("系统", "拖车里还住着旅客，不能往下埋尸（原版：仅限无人占用的拖车）。", "warn");
+        return;
+    }
     let corpse = pendingAction.targetCorpse;
     let maxBurial = getAnnexCapacity(targetSlot.card);
     let needed = corpse.specialBurial === 'twins' ? 2 : 1; // 双胞胎占 2 个埋尸位、计 2 具尸体
-    if (targetSlot.buried.length + needed > maxBurial) {
+    if (effectiveBuried(targetSlot) + needed > maxBurial) {
         logMessage("系统", needed === 2 ? "双胞胎必须埋在至少有 2 个空位的别馆下。" : "这个别馆已经没有空余埋尸容量。", "warn");
         return;
     }
@@ -1692,65 +1897,307 @@ const PHASE_MOD = {
     late:  { kill: 1.35, room: 0.25, service: 0.4 },
 };
 
+// ==========================================
+// 真规则 AI：叔叔与人类同规则（帮工成本/手牌/别馆/埋尸/工资）
+// ==========================================
+// 叔叔的别馆折扣（与人类同款别馆效果）
+function uncleDiscount(self, names) {
+    return self.annexes.filter(a => names.some(n => a.card.annexName.includes(n))).length;
+}
+function uncleNetCost(self, type, card) {
+    let raw = getCardRank(card, type);
+    let d = 0;
+    if (type === 'bribe') d = uncleDiscount(self, ["会客厅"]);
+    if (type === 'kill') d = uncleDiscount(self, ["熊笼", "熊戏笼"]);
+    if (type === 'build') d = uncleDiscount(self, ["车间"]);
+    if (type === 'bury') d = uncleDiscount(self, ["酒窖"]);
+    return Math.max(0, raw - d);
+}
+function uncleCanPay(self, cost, excludeId) {
+    return self.hand.filter(c => c.id !== excludeId).length >= cost;
+}
+// 计划用：支付 cost 张帮工的「真实损耗」估值（特长匹配回手≈0、农民回酒馆≈0.3、其余≈1.2）
+function uncleHelperLoss(self, type, cost, excludeId) {
+    let pool = self.hand.filter(c => c.id !== excludeId);
+    let loss = 0, used = 0;
+    pool.filter(c => c.aptitude === type).forEach(() => { if (used < cost) { used++; } });
+    pool.filter(c => c.role === 'peasant' && c.aptitude !== type).forEach(() => { if (used < cost) { used++; loss += 0.3; } });
+    let rest = pool.filter(c => c.aptitude !== type && c.role !== 'peasant').sort((a, b) => getCardRank(a, 'bribe') - getCardRank(b, 'bribe'));
+    rest.forEach(() => { if (used < cost) { used++; loss += 1.2; } });
+    return used >= cost ? loss : Infinity;
+}
+// 执行支付：与人类同规则（特长匹配回手 / 农民回酒馆 / 其余进离店堆）
+function uncleSpendHelpers(self, type, cost, excludeId) {
+    if (cost <= 0) return { paid: [], returned: 0 };
+    let pool = self.hand.filter(c => c.id !== excludeId);
+    let chosen = [];
+    const pick = c => { if (chosen.length < cost) chosen.push(c); };
+    pool.filter(c => c.aptitude === type).forEach(pick);                                   // 特长匹配（回手，零损耗）
+    pool.filter(c => c.role === 'peasant' && !chosen.includes(c)).forEach(pick);           // 农民（回酒馆）
+    pool.filter(c => !chosen.includes(c) && c.aptitude !== type)
+        .sort((a, b) => getCardRank(a, 'bribe') - getCardRank(b, 'bribe')).forEach(pick);  // 杂牌按低等级弃
+    if (chosen.length < cost) return null;
+    let returned = 0;
+    chosen.forEach(helper => {
+        let i = self.hand.findIndex(h => h.id === helper.id);
+        if (i !== -1) self.hand.splice(i, 1);
+        if (helper.aptitude === type) { self.hand.push(helper); returned++; }
+        else if (helper.role === 'peasant') bistro.push(helper);
+        else exitStack.push(helper);
+    });
+    return { paid: chosen, returned };
+}
+// 叔叔别馆的空余埋尸位（占用中的拖车不算）
+function uncleFreeBuryCapacity(self) {
+    return self.annexes.reduce((s, a) => {
+        if (a.card.isTrailer && a.occupant) return s;
+        return s + Math.max(0, getAnnexCapacity(a.card) - effectiveBuried(a));
+    }, 0);
+}
+// 叔叔建别馆的简单瞬发效果（颜色计数类 + 厢房）
+function uncleAnnexImmediateEffect(self, card) {
+    const colorCount = color => self.annexes.filter(a => a.card.color === color).length;
+    if (card.annexName.includes("菜园")) addUncleCash(self, colorCount("artisan-red"));
+    else if (card.annexName.includes("报摊")) addUncleCash(self, colorCount("merchant-blue"));
+    else if (card.annexName.includes("祭坛")) addUncleCash(self, colorCount("religious-purple"));
+    else if (card.annexName.includes("厢房")) {
+        let neutralRoom = rooms.find(r => r.key === 'neutral');
+        if (neutralRoom) { neutralRoom.key = self.idx; syncAIKeys(); }
+    }
+}
+// 候选建造卡的引擎价值估算（埋尸容量 + 常用效果）
+function annexBuildValue(self, card) {
+    let v = getAnnexCapacity(card) * 2.5;
+    let an = card.annexName || '';
+    if (an.includes("花园")) v += 5;          // 每轮 +2F 租金
+    if (an.includes("酒厂")) v += 4;          // 工资减免
+    if (an.includes("酒窖") || an.includes("会客厅") || an.includes("车间") || an.includes("熊")) v += 3.5; // 行动折扣
+    if (an.includes("温室") || an.includes("议事厅")) v += 3;  // 终局支票加成
+    if (an.includes("菜园") || an.includes("报摊") || an.includes("祭坛")) v += 2;
+    if (card.isTrailer) v += 1.5;             // 拖车：1F/晨 + 埋尸
+    return v;
+}
+
+// ==========================================
+// 拟人层：四叔声线 / 反应台词 / 决策噪声 / 记仇
+// ==========================================
+// 每档难度一种"人格嗓音"——行动后偶尔来一句（不是每次，真人也不会一直说话）
+const UNCLE_VOICE = {
+    silly:      { kill: '嘿嘿，口袋里的钱归我啦！', bribe: '来当我的朋友嘛~', bury: '埋好埋好，没人看见。', launder: '存起来存起来！', pass: '今天手气不太好……', build: '盖个小房子！' },
+    scheming:   { kill: '抱歉了，这只是生意。', bribe: '聪明人都站我这边。', bury: '干净利落，不留把柄。', launder: '账要做得漂亮。', pass: '我在等一个更好的时机。', build: '产业才是长久之计。' },
+    murderous:  { kill: '刀子比嘴快。', bribe: '活人比死人贵，将就。', bury: '土够深，话就少。', launder: '血钱也是钱。', pass: '今晚的刀有点钝。', build: '多个埋人的地方总是好的。' },
+    mastermind: { kill: '风险可控，动手。', bribe: '人脉即资产。', bury: '证据归零。', launder: '落袋为安才是赢。', pass: '按兵不动也是一步棋。', build: '这笔投资两轮回本。' },
+    ml:         { kill: '这是当前期望值最高的一步。', bribe: '这张牌的边际价值很高。', bury: '该压平风险曲线了。', launder: '提前锁定收益。', pass: '当前局面没有正期望行动。', build: '长线收益，建。' },
+};
+function uncleSay(self, key) {
+    if (Math.random() < 0.5) return; // 真人不会每步都说话
+    let line = (UNCLE_VOICE[self.difficulty] || {})[key];
+    if (line) logMessage("AI", `${self.name}悄声道："${line}"`, "ai");
+}
+
+// 对玩家行动的桌边反应（45% 概率开口，由在场叔叔随机一位/当事叔叔发言）
+const UNCLE_REACTIONS = {
+    playerKill:      { silly: '哇！你下手也太快了吧！', scheming: '啧，这单生意本来该是我的。', murderous: '好刀法……我喜欢。', mastermind: '有意思，你在抢节奏。', ml: '已记录：对手偏好高风险打法。' },
+    playerRobMyRoom: { silly: '喂！那是我房里的客人！', scheming: '动我房里的人？你会后悔的。', murderous: '从我嘴里抢肉……我记住了。', mastermind: '抢我的房客？我会在账上讨回来。', ml: '更新策略：对你的目标加权报复。' },
+    playerFined:     { silly: '哈哈哈，警察来抓你啦！', scheming: '看吧，手脚不干净就是这个下场。', murderous: '罚款？我从来不留活口也不留把柄。', mastermind: '风险管理不及格啊。', ml: '对手现金流受损，胜率上调。' },
+    playerBuryInMine:{ silly: '诶？你怎么埋到我家来了！', scheming: '用我的地还分我钱，算你懂事。', murderous: '在我的地盘埋你的人……行，钱照分。', mastermind: '互利交易，接受。', ml: '收益共享，可接受。' },
+    playerBigLoot:   { silly: '好多钱！我也想要！', scheming: '赚这么狠，小心夜路。', murderous: '下一个肥的就是你。', mastermind: '领先者会被针对的，自求多福。', ml: '检测到威胁，提升拆台权重。' },
+};
+function uncleReact(event, specificUncle) {
+    if (!aiUncles.length || Math.random() < 0.45) return;
+    let u = specificUncle || aiUncles[Math.floor(Math.random() * aiUncles.length)];
+    let line = (UNCLE_REACTIONS[event] || {})[u.difficulty];
+    if (line) logMessage("AI", `${u.name}："${line}"`, "ai");
+}
+
+// 决策噪声：按难度温度从高分计划里软抽样——高手近乎最优，傻叔叔更随性、永不可被完全预测
+const DIFF_TEMP = { silly: 3.2, scheming: 1.4, murderous: 1.6, mastermind: 0.8, ml: 0.55 };
+function pickPlanSoftmax(plans, diff) {
+    let temp = DIFF_TEMP[diff] || 1.0;
+    let top = plans.slice(0, 4);
+    if (top.length <= 1 || top[0].score >= 50) return plans[0]; // 防爆仓洗钱等保命招保持确定
+    let mx = top[0].score;
+    let ws = top.map(p => Math.exp((p.score - mx) / temp));
+    let sum = ws.reduce((a, b) => a + b, 0);
+    let r = Math.random() * sum;
+    for (let i = 0; i < top.length; i++) { r -= ws[i]; if (r <= 0) return top[i]; }
+    return top[0];
+}
+
 function aiStrategicAction(self) {
     self = self || ai;
     let prof = AI_PROFILES[self.difficulty] || AI_PROFILES.mastermind;
     let pm = (prof.phase && prof.phase[getRoundPhase()]) || PHASE_MOD[getRoundPhase()];
-    let occupied = rooms.filter(r => isOpenRoom(r) && r.occupant);
+    let occupied = allOccupiedSpots(); // 客房 + 拖车住客（原版：拖车视同客房，可被刺杀/拉拢）
     let neutralRoom = rooms.find(r => r.key === 'neutral');
     let myOpenRooms = rooms.filter(r => isOpenRoom(r) && r.key === self.idx);
     let unservicedMine = myOpenRooms.find(r => !roomHasService(r));
-    const isOpp = r => r.key === 'player' || (typeof r.key === 'number' && r.key !== self.idx);
+    const isOpp = s => s.ownerKey === 'player' || (typeof s.ownerKey === 'number' && s.ownerKey !== self.idx);
+    const lateGame = getRoundPhase() === 'late';
+    const policeLurking = occupied.some(s => s.occupant.role === 'police');
+    // 道具：咖啡（+2F，不占行动）尽早喝掉
+    if (uncleConsumeObject(self, 'coffee')) addUncleCash(self, 2);
+    const handSize = self.hand.length;
+    const wagePressure = Math.max(0, handSize - 4) * 1.5; // 手牌太多→明早工资负担
+    const freeBury = uncleFreeBuryCapacity(self);
 
-    // 为每个可选行动按「性格 × 阶段」估收益分，再挑最高的执行
+    // 为每个可选行动按「性格 × 阶段」估收益分，再挑最高的执行（全部经过可负担性闸门）
     let plans = [];
 
     if (occupied.length > 0) {
-        // A) 刺杀并洗劫：油水越高越值得，住对手房里额外加权（断对手财路）
+        // A) 刺杀：尸体进未埋堆（钱要埋了才拿得到！）——估值要扣帮工损耗与警察风险
         let killTarget = occupied.slice().sort((a, b) => b.occupant.loot - a.occupant.loot)[0];
-        let kScore = killTarget.occupant.loot * prof.kill * pm.kill + (isOpp(killTarget) ? 6 : 0) * prof.deny;
-        plans.push({ type: 'kill', room: killTarget, score: kScore });
+        let kCost = uncleNetCost(self, 'kill', killTarget.occupant);
+        if (uncleCanPay(self, kCost)) {
+            let loss = uncleHelperLoss(self, 'kill', kCost);
+            let overflowRisk = (self.corpses.length + 1 > freeBury) ? 7 : 0; // 没坑还杀，要被警察罚
+            let policeRisk = policeLurking ? 5 : 0;
+            let kScore = killTarget.occupant.loot * 0.8 * prof.kill * pm.kill
+                - loss * 1.8 - overflowRisk - policeRisk
+                + (isOpp(killTarget) ? 6 : 0) * prof.deny;
+            plans.push({ type: 'kill', spot: killTarget, cost: kCost, score: kScore });
+        }
 
-        // B) 拉拢：拆对手的台、攒拉拢堆，偏好高等级、对手房间、非农民
-        let bribeTarget = occupied.slice().sort((a, b) =>
-            (getCardRank(b.occupant, 'bribe') + (b.occupant.role === 'peasant' ? -3 : 0)) -
-            (getCardRank(a.occupant, 'bribe') + (a.occupant.role === 'peasant' ? -3 : 0)))[0];
-        let bScore = getCardRank(bribeTarget.occupant, 'bribe') * 2 * prof.bribe
-            + (isOpp(bribeTarget) ? 4 : 0) * prof.deny
-            + (bribeTarget.occupant.role === 'peasant' ? -4 : 0);
-        plans.push({ type: 'bribe', room: bribeTarget, score: bScore });
+        // B) 拉拢：目标进手牌成为帮工燃料/建材——偏好高等级、特长有用、对手房间
+        let bribeCands = occupied.filter(s => s.occupant.role !== 'peasant' && s.occupant.role !== 'police');
+        if (bribeCands.length > 0) {
+            let bribeTarget = bribeCands.slice().sort((a, b) => getCardRank(b.occupant, 'bribe') - getCardRank(a.occupant, 'bribe'))[0];
+            let bCost = uncleNetCost(self, 'bribe', bribeTarget.occupant);
+            if (uncleCanPay(self, bCost)) {
+                let loss = uncleHelperLoss(self, 'bribe', bCost);
+                let handValue = 2 + getCardRank(bribeTarget.occupant, 'bribe') * 1.2
+                    + annexBuildValue(self, bribeTarget.occupant) * 0.25; // 未来可建别馆的潜力
+                let bScore = handValue * prof.bribe - loss * 1.5 - wagePressure
+                    + (isOpp(bribeTarget) ? 4 : 0) * prof.deny
+                    - (lateGame ? 3 : 0); // 终局囤人没用
+                plans.push({ type: 'bribe', spot: bribeTarget, cost: bCost, score: bScore });
+            }
+        }
     }
-    // C) 扩张地盘（早期权重高、后期几乎不扩张）
+
+    // B2) 雇农民：免费从酒馆抓 2 名（手牌引擎的燃料）
+    if (bistro.length > 0 && handSize < 5 && !lateGame) {
+        plans.push({ type: 'peasants', score: 5.5 - handSize * 0.8 - wagePressure });
+    }
+
+    // C) 埋尸：把尸体的油水真正落袋；警察临近时是救命动作
+    if (self.corpses.length > 0) {
+        let corpse = self.corpses.slice().sort((a, b) => b.loot - a.loot)[0];
+        let bCost = uncleNetCost(self, 'bury', corpse);
+        let need = corpse.specialBurial === 'twins' ? 2 : 1;
+        // 大胡子女士（原版）：必须埋进「另一名玩家」的别馆并平分——禁用自家槽位
+        let ownSlot = corpse.specialBurial === 'bearded' ? null
+            : self.annexes.find(a => !(a.card.isTrailer && a.occupant)
+                && effectiveBuried(a) + need <= getAnnexCapacity(a.card));
+        let playerSlot = !ownSlot ? player.annexes.find(a => !(a.card.isTrailer && a.occupant)
+            && effectiveBuried(a) + need <= getAnnexCapacity(a.card)) : null;
+        if ((ownSlot || playerSlot) && uncleCanPay(self, bCost)) {
+            let loss = uncleHelperLoss(self, 'bury', bCost);
+            let gain = ownSlot ? corpse.loot : Math.ceil(corpse.loot / 2); // 埋对手别馆要平分
+            let urgency = (policeLurking ? 14 : 0) + self.corpses.length * 2.5 + (lateGame ? 5 : 0);
+            plans.push({ type: 'bury', corpse, slot: ownSlot || playerSlot, slotIsOwn: !!ownSlot, cost: bCost, score: gain * 0.6 + urgency - loss * 1.5 });
+        }
+    }
+
+    // D) 建别馆：把手牌变成埋尸坑与收入引擎
+    let buildCands = self.hand.filter(c => c.role !== 'peasant' && c.role !== 'police');
+    if (buildCands.length > 0) {
+        let cand = buildCands.slice().sort((a, b) => annexBuildValue(self, b) - annexBuildValue(self, a))[0];
+        let bCost = uncleNetCost(self, 'build', cand);
+        if (uncleCanPay(self, bCost, cand.id)) {
+            let loss = uncleHelperLoss(self, 'build', bCost, cand.id);
+            let needSlots = self.corpses.length > freeBury ? 5 : 0; // 急需埋尸坑
+            // 建别馆是中期引擎（埋尸坑+折扣+收入），不能只跟"占房"的早期权重走
+            let dScore = (annexBuildValue(self, cand) - loss * 1.5 + needSlots) * prof.room * (pm.room * 0.35 + 0.65) * 0.85
+                - (lateGame ? 4 : 0);
+            plans.push({ type: 'build', card: cand, cost: bCost, score: dScore });
+        }
+    }
+
+    // E) 占房（早期权重高、后期几乎不扩张）
     if (neutralRoom && self.keys.length < 4) plans.push({ type: 'room', score: 6 * prof.room * pm.room });
-    // D) 布置客房服务（早期建立稳定收入引擎）
+    // F) 布置客房服务（早期建立稳定收入引擎）
     if (unservicedMine) plans.push({ type: 'room_service', score: 5 * prof.service * pm.service });
-    // E) 兜底：洗钱攒支票
-    plans.push({ type: 'check', score: 4.5 });
-    // F) 现金接近上限就先洗钱落袋（阈值随性格不同）
+    // G) 兜底：跳过（真规则：没有"白拿支票"这种行动——洗钱只是现金换支票）
+    plans.push({ type: 'pass', score: 1 });
+    // H) 现金接近上限就洗钱落袋（阈值随性格不同；现金不足 10F 洗不了）
     if (self.cash >= 36) plans.push({ type: 'launder', score: 100 });
-    else if (self.cash >= prof.launderAt) plans.push({ type: 'launder', score: 9 });
+    else if (self.cash >= Math.max(10, prof.launderAt)) plans.push({ type: 'launder', score: 9 });
+
+    // 记仇：玩家动过这位叔叔的房客/地盘后，他对玩家目标的"拆台"评分加权
+    if (self.grudge && self.grudge.heat > 0) {
+        plans.forEach(p => {
+            if ((p.type === 'kill' || p.type === 'bribe') && p.spot && p.spot.ownerKey === 'player') {
+                p.score += self.grudge.heat * 1.6;
+            }
+        });
+    }
 
     plans.sort((a, b) => b.score - a.score);
-    let plan = plans[0];
+    let plan = pickPlanSoftmax(plans, self.difficulty); // 带噪声的拟人决策
     const anchor = id => document.getElementById(id);
+    const payLine = pay => pay && pay.paid.length
+        ? `打出 ${pay.paid.length} 名帮工${pay.returned ? `（${pay.returned} 名特长匹配回手）` : ''}，`
+        : '';
 
     if (plan.type === 'kill') {
-        let victim = plan.room.occupant;
-        plan.room.occupant = null;
+        let pay = uncleSpendHelpers(self, 'kill', plan.cost);
+        let victim = plan.spot.occupant;
+        let fromEl = anchor(plan.spot.anchorId);
+        plan.spot.clear();
         victim.isDead = true;
-        self.killPile.push(victim);
-        addUncleCash(self, victim.loot);
-        let denial = isOpp(plan.room) ? '，顺手断了对手的财路！' : '。';
-        aiThink(self, `${self.name}盯上了 ${plan.room.id} 号房油水丰厚的 ${victim.name}，一刀放倒、搜走 ${victim.loot}F${denial}`);
-        playEffect('kill', `+${victim.loot}F`, anchor('room-' + plan.room.id));
-        if (self.bribePile.length > 0) { exitStack.push(self.bribePile.pop()); }
+        self.corpses.push(victim); // 真规则：尸体面朝下放在面前，埋了才有钱，警察来了要罚！
+        let denial = isOpp(plan.spot) ? '，顺手断了对手的财路！' : '。';
+        aiThink(self, `${self.name}${payLine(pay)}在${plan.spot.label}干掉了 ${victim.name}${denial}尸体（${victim.loot}F 油水）还没埋。`);
+        playEffect('kill', victim.name, fromEl);
+        flyCard(fromEl, anchor('uncle-box-' + self.idx), '💀 ' + victim.name.split(' (')[0]);
+        uncleSay(self, 'kill');
     } else if (plan.type === 'bribe') {
-        let t = plan.room.occupant;
-        plan.room.occupant = null;
-        self.bribePile.push(t);
-        let denial = isOpp(plan.room) ? '，免得落到对手手里。' : '，收为己用。';
-        aiThink(self, `${self.name}抢先收买了 ${plan.room.id} 号房的 ${t.name}${denial}`);
-        playEffect('bribe', t.name, anchor('room-' + plan.room.id));
+        let pay = uncleSpendHelpers(self, 'bribe', plan.cost);
+        let t = plan.spot.occupant;
+        let fromEl = anchor(plan.spot.anchorId);
+        plan.spot.clear();
+        self.hand.push(t); // 真规则：拉拢的客人进手牌，成为帮工/建材，明早要付工资
+        let denial = isOpp(plan.spot) ? '，免得落到对手手里。' : '，收为己用。';
+        aiThink(self, `${self.name}${payLine(pay)}收买了${plan.spot.label}的 ${t.name} 入伙${denial}`);
+        playEffect('bribe', t.name, fromEl);
+        flyCard(fromEl, anchor('uncle-box-' + self.idx), '🤝 ' + t.name.split(' (')[0]);
+        uncleSay(self, 'bribe');
+    } else if (plan.type === 'peasants') {
+        let take = Math.min(2, bistro.length);
+        for (let i = 0; i < take; i++) self.hand.push(bistro.pop());
+        aiThink(self, `${self.name}从小酒馆免费雇来 ${take} 名农民打下手。`);
+        playEffect('bribe', '农民×' + take, anchor('uncle-box-' + self.idx) || document.querySelector('.ai-status-box'));
+    } else if (plan.type === 'bury') {
+        let pay = uncleSpendHelpers(self, 'bury', plan.cost);
+        let ci = self.corpses.findIndex(c => c.id === plan.corpse.id);
+        if (ci !== -1) self.corpses.splice(ci, 1);
+        self.buriedCount = (self.buriedCount || 0) + (plan.corpse.specialBurial === 'twins' ? 2 : 1);
+        let loot = plan.corpse.loot + (uncleConsumeObject(self, 'bury_bonus') ? 2 : 0); // 道具[金牙]
+        if (plan.slotIsOwn) {
+            tuckCorpse(plan.slot, plan.corpse);
+            addUncleCash(self, loot);
+            aiThink(self, `${self.name}${payLine(pay)}把 ${plan.corpse.name} 埋进了自家 [${plan.slot.card.annexName}]，搜出 ${loot}F。`);
+        } else {
+            // 埋到玩家别馆下：平分赃款（原版规则）
+            let mine = Math.ceil(loot / 2), yours = loot - mine;
+            plan.slot.buried.push({ ...plan.corpse, buriedByUncle: self.idx });
+            if (plan.corpse.specialBurial === 'twins') plan.slot.buried.push({ name: '双胞胎之二', loot: 0, isTwinPlaceholder: true, color: plan.corpse.color, buriedByUncle: self.idx });
+            addUncleCash(self, mine);
+            addPlayerCash(yours);
+            logMessage("AI", `${self.name}把 ${plan.corpse.name} 埋进了你的 [${plan.slot.card.annexName}] 下——按规矩与你平分：他 ${mine}F，你 ${yours}F。`, "ai");
+        }
+        playEffect('bury', `+${loot}F`, anchor('uncle-box-' + self.idx) || document.querySelector('.ai-status-box'));
+        uncleSay(self, 'bury');
+    } else if (plan.type === 'build') {
+        let pay = uncleSpendHelpers(self, 'build', plan.cost, plan.card.id);
+        let hi = self.hand.findIndex(h => h.id === plan.card.id);
+        if (hi !== -1) self.hand.splice(hi, 1);
+        self.annexes.push({ card: plan.card, buried: [] });
+        uncleAnnexImmediateEffect(self, plan.card);
+        aiThink(self, `${self.name}${payLine(pay)}把手里的 ${plan.card.name} 改建成了 [${plan.card.annexName}]。`);
+        uncleSay(self, 'build');
+        playEffect('build', plan.card.annexName, anchor('uncle-box-' + self.idx) || document.querySelector('.ai-status-box'));
     } else if (plan.type === 'room') {
         neutralRoom.key = self.idx; syncAIKeys();
         aiThink(self, `旅馆暂时没什么肥羊，${self.name}强占了 ${neutralRoom.id} 号中立客房，扩张地盘等下一拨客人。`);
@@ -1760,15 +2207,34 @@ function aiStrategicAction(self) {
     } else if (plan.type === 'launder') {
         self.cash = Math.max(0, self.cash - 10);
         self.checks += 1;
-        aiThink(self, `现金快到 40F 上限，${self.name}把 10F 洗成支票存好，落袋为安。`);
+        aiThink(self, `现金攒得差不多了，${self.name}把 10F 洗成支票存好，落袋为安。`);
         playEffect('launder', '', anchor('uncle-box-' + self.idx) || document.querySelector('.ai-wealth-box'));
+        triggerNotaryStudy(self);
     } else {
-        self.checks += 1;
-        aiThink(self, `没有值得动手的目标，${self.name}不动声色地攒了一张 10F 支票。`);
+        aiThink(self, `${self.name}扫了一眼大堂，决定这次按兵不动。`);
     }
 
     renderUI();
     setTimeout(advanceTurn, 1100);
+}
+
+// 叔叔使用姑妈道具（找到即消耗；AI 只主动使用一部分常用道具）
+function uncleConsumeObject(self, effect) {
+    let i = (self.objects || []).findIndex(o => o.effect === effect);
+    if (i === -1) return null;
+    let o = self.objects.splice(i, 1)[0];
+    logMessage("AI", `${self.name}打出了道具 [${o.name}]。`, "ai");
+    playEffect('object', o.name, document.getElementById('uncle-box-' + self.idx) || document.querySelector('.ai-status-box'));
+    return o;
+}
+
+// 名流[书房/公证人]：对手（AI 叔叔）洗钱或兑换支票时，你每座书房获得 1F（原版：仅在他人回合触发）
+function triggerNotaryStudy(uncle) {
+    let notaryCount = player.annexes.filter(a => a.card.annexName.includes("书房")).length;
+    if (notaryCount > 0) {
+        addPlayerCash(notaryCount);
+        logMessage("玩家", `[书房] ${uncle.name}动了支票，你顺势抽成 ${notaryCount}F。`, "player");
+    }
 }
 
 // ==========================================
@@ -1788,7 +2254,8 @@ function morningStepEvent() {
 }
 
 function morningStepPolice() {
-    let policeInRooms = rooms.some(r => isOpenRoom(r) && r.occupant && r.occupant.role === 'police') || roundEffects.forceInvestigation;
+    // 原版：拖车视同客房——警察住进拖车同样触发调查
+    let policeInRooms = allOccupiedSpots().some(s => s.occupant.role === 'police') || roundEffects.forceInvestigation;
     
     if (policeInRooms) {
         logMessage("警察", "🚓 警察在大堂展开调查！发现未掩埋的尸体...", "police");
@@ -1813,6 +2280,7 @@ function morningStepPolice() {
             if (playerTotalVal >= penalty) {
                 deductPlayerTotal(penalty);
                 logMessage("玩家", `你支付了 ${penalty}F 封口费。${exposedCount} 具暴露尸体被强行移出本局。`, "player");
+                uncleReact('playerFined');
             } else {
                 player.cash = 0;
                 player.checks = 0;
@@ -1829,20 +2297,28 @@ function morningStepPolice() {
         }
         
         aiUncles.forEach(u => {
-            if (u.corpses.length > 0) {
-                let corpseCount = u.corpses.length;
-                let penalty = u.corpses.length * 10;
-                let uTotalVal = u.cash + (u.checks * 10);
-                if (uTotalVal >= penalty) {
-                    deductUncleTotal(u, penalty);
-                } else {
-                    u.cash = 0;
-                    u.checks = 0;
-                }
-                u.corpses.forEach(c => removedStack.push(c));
-                u.corpses = [];
-                logMessage("AI", `${u.name}被罚款并处理了 ${corpseCount} 具未埋尸体。`, "ai");
+            if (u.corpses.length === 0) return;
+            // 道具自保：[水井/诊所类]先处理掉一具；[雪堆]再让一具免于本轮罚款
+            if (uncleConsumeObject(u, 'remove_corpse')) {
+                removedStack.push(u.corpses.shift());
             }
+            let protectedN = 0;
+            if (u.corpses.length > 0 && uncleConsumeObject(u, 'hide_corpse')) protectedN = 1;
+            let exposed = u.corpses.length - protectedN;
+            if (exposed <= 0) {
+                if (u.corpses.length > 0) logMessage("AI", `${u.name}的尸体被道具藏住了，治安官一无所获。`, "ai");
+                return;
+            }
+            let penalty = exposed * 10;
+            let uTotalVal = u.cash + (u.checks * 10);
+            if (uTotalVal >= penalty) {
+                deductUncleTotal(u, penalty);
+            } else {
+                u.cash = 0;
+                u.checks = 0;
+            }
+            u.corpses.splice(protectedN).forEach(c => removedStack.push(c)); // 受保护的留在面前
+            logMessage("AI", `${u.name}被搜出 ${exposed} 具尸体，掏了 ${penalty}F 封口费给掘墓人。`, "ai");
         });
     } else {
         logMessage("系统", "本轮没有警察查夜，相安无事。", "system");
@@ -1862,6 +2338,13 @@ function morningStepRent() {
         playEffect('rent', `+${playerRentBonus}F`, document.querySelector('.player-wealth-box'));
     }
     
+    // 叔叔的[花园类]道具：退房阶段有自己房间住人时打出（+2F）
+    aiUncles.forEach(u => {
+        if (rooms.some(r => isAIRoom(r) && r.key === u.idx && r.occupant)) {
+            if (uncleConsumeObject(u, 'extra_rent')) addUncleCash(u, 2);
+        }
+    });
+
     rooms.forEach(room => {
         if (room.occupant) {
             let rent = 1 + (roundEffects.extraRent || 0);
@@ -1874,9 +2357,39 @@ function morningStepRent() {
                 addUncleCash(u, rent);
                 logMessage("AI", `${u.name}名下 ${room.id} 号客房退租，他获得 ${rent}F。`, "ai");
             }
-            
+
             exitStack.push(room.occupant);
             room.occupant = null;
+        }
+    });
+
+    // 拖车退房（原版：每辆有旅客的拖车给所有者 1F；视同客房享受旺季加成）
+    player.annexes.forEach(a => {
+        if (a.card.isTrailer && a.occupant) {
+            let rent = 1 + (roundEffects.extraRent || 0);
+            addPlayerCash(rent);
+            logMessage("玩家", `你的拖车「${a.card.name.split(' (')[0]}」住客退房，获得 ${rent}F。`, "player");
+            playEffect('rent', `+${rent}F`, document.getElementById('player-annexes'));
+            exitStack.push(a.occupant);
+            a.occupant = null;
+        }
+    });
+    aiUncles.forEach(u => (u.annexes || []).forEach(a => {
+        if (a.card.isTrailer && a.occupant) {
+            let rent = 1 + (roundEffects.extraRent || 0);
+            addUncleCash(u, rent);
+            logMessage("AI", `${u.name}的拖车住客退房，他获得 ${rent}F。`, "ai");
+            exitStack.push(a.occupant);
+            a.occupant = null;
+        }
+    }));
+
+    // 叔叔的[花园]别馆：退房阶段每座 +2F（与人类同款效果）
+    aiUncles.forEach(u => {
+        let g = (u.annexes || []).filter(a => a.card.annexName.includes("花园")).length;
+        if (g > 0) {
+            addUncleCash(u, 2 * g);
+            logMessage("AI", `${u.name}的 [花园] 在退房阶段带来 ${2 * g}F。`, "ai");
         }
     });
 
@@ -1911,12 +2424,38 @@ function morningStepWages() {
         logMessage("事件", "惨败事件：你的帮工四散离去，本轮无需再支付这些工资。", "warn");
         playEffect('wage', '帮工四散', document.querySelector('.player-wealth-box'));
     }
+    // 惨败事件对所有玩家生效（原版："the players"）——叔叔们的帮工也四散
+    if (roundEffects.fiasco) {
+        aiUncles.forEach(u => {
+            if ((u.hand || []).length > 0) {
+                let n = u.hand.length;
+                u.hand.splice(0).forEach(c => { if (c.role === 'peasant') bistro.push(c); else exitStack.push(c); });
+                logMessage("事件", `惨败事件：${u.name}的 ${n} 名帮工也四散离去。`, "warn");
+            }
+        });
+    }
 
-    // 名流[药房/药剂师]：清晨若手牌不少于 3 张，每座药房获得 2F
+    // 叔叔的[告解室]道具：埋尸落后于"埋尸最多者"时，从那个领先者身上拿 6F（领先者可能是你！）
+    aiUncles.forEach(u => {
+        if (!(u.objects || []).some(o => o.effect === 'catchup')) return;
+        let rivals = [{ label: '你', buried: playerBuriedCount(), seat: 'player' }]
+            .concat(aiUncles.filter(x => x !== u).map(x => ({ label: x.name, buried: uncleDisposedCount(x), seat: x })));
+        let leader = rivals.sort((a, b) => b.buried - a.buried)[0];
+        if (leader && uncleDisposedCount(u) < leader.buried) {
+            uncleConsumeObject(u, 'catchup');
+            let taken;
+            if (leader.seat === 'player') { taken = Math.min(6, player.cash); player.cash -= taken; }
+            else { taken = Math.min(6, leader.seat.cash); leader.seat.cash -= taken; }
+            addUncleCash(u, taken);
+            logMessage("AI", `${u.name}的[告解室]生效：从${leader.label}身上拿走 ${taken}F！`, "ai");
+        }
+    });
+
+    // 名流[药房/药剂师]（原版）：退房时若「另一名玩家」手中帮工 ≥3 张，每座药房获得 2F
     let pharmCount = player.annexes.filter(a => a.card.annexName.includes("药房")).length;
-    if (pharmCount > 0 && player.hand.length >= 3) {
+    if (pharmCount > 0 && aiUncles.some(u => (u.hand || []).length >= 3)) {
         addPlayerCash(2 * pharmCount);
-        logMessage("玩家", `[药房] 清晨你手牌不少于 3 张，获得 ${2 * pharmCount}F。`, "player");
+        logMessage("玩家", `[药房] 有对手囤了一手帮工（≥3 张），你获得 ${2 * pharmCount}F。`, "player");
     }
 
     let HandSize = player.hand.length;
@@ -1950,7 +2489,36 @@ function morningStepWages() {
     } else {
         logMessage("玩家", "您手头没有帮手，无需支付清晨工资。", "player");
     }
-    
+
+    // 真规则：叔叔们也要付工资（1F/张，酒厂减免；付不起的帮工按农民优先、低等级优先被解雇）
+    aiUncles.forEach(u => {
+        let hs = (u.hand || []).length;
+        if (hs === 0) return;
+        let distiller = (u.annexes || []).filter(a => a.card.annexName.includes("酒厂")).length;
+        let wages = Math.max(0, hs - distiller) + (hs * (roundEffects.wageSurcharge || 0));
+        if (wages <= 0) return;
+        if (u.cash >= wages) {
+            u.cash -= wages;
+            logMessage("AI", `${u.name}付了 ${wages}F 工资养着手下 ${hs} 名帮工。`, "ai");
+        } else {
+            let paid = u.cash;
+            let unpaid = wages - paid;
+            u.cash = 0;
+            let sorted = [...u.hand].sort((a, b) => {
+                if (a.role === 'peasant' && b.role !== 'peasant') return -1;
+                if (b.role === 'peasant' && a.role !== 'peasant') return 1;
+                return a.rank - b.rank;
+            });
+            let dismissed = sorted.slice(0, unpaid);
+            dismissed.forEach(c => {
+                u.hand = u.hand.filter(h => h.id !== c.id);
+                if (c.role === 'peasant') bistro.push(c);
+                else exitStack.push(c);
+            });
+            logMessage("AI", `${u.name}发不出工资（只付了 ${paid}F），${dismissed.length} 名帮工愤而离去。`, "ai");
+        }
+    });
+
     renderUI();
     setTimeout(checkGameEndOrNextRound, 1000);
 }
@@ -1967,6 +2535,7 @@ function checkGameEndOrNextRound() {
     
     roundNum++;
     firstActorIdx = (firstActorIdx + 1) % playerCount; // 主理人轮换到下一座位
+    aiUncles.forEach(u => { if (u.grudge && u.grudge.heat > 0) u.grudge.heat -= 1; }); // 仇恨随时间淡去
     logMessage("系统", `--- 第 ${roundNum} 轮即将开始，主理人换人！ ---`, "system");
     runPhaseWelcome();
 }
@@ -2060,23 +2629,25 @@ function triggerGameOver() {
         }
     });
     
-    // 2. 各 AI 叔叔资产（按难度的计分性格——越高级的叔叔越会把"战利品堆"折算成分数，结算越强）
-    //    所有难度都用同一套策略引擎(aiStrategicAction)行动、都会累积拉拢/刺杀堆，
-    //    因此这里必须为「会计分的难度」全部计入，避免策略/学习叔叔白拿堆却 0 计分而被低估。
-    //    silly: 只算现金+支票  ·  scheming: +拉拢堆  ·  murderous/mastermind/ml: +拉拢堆 +刺杀等级
+    // 2. 各 AI 叔叔资产——真规则：纯规则书计分（现金 + 支票 + 终局别馆加成），难度差异只体现在打法上
     function uncleTotal(u) {
         let t = u.cash + u.checks * 10;
-        if (u.difficulty !== 'silly') t += u.bribePile.length;
-        if (u.difficulty === 'murderous' || u.difficulty === 'mastermind' || u.difficulty === 'ml') {
-            u.killPile.forEach(c => t += getCardRank(c, 'kill'));
-        }
+        (u.annexes || []).forEach(a => {
+            let an = a.card.annexName || '';
+            if (an.includes("温室")) t += u.checks * 3;
+            if (an.includes("议事厅")) t += u.checks * 2;
+            if (an.includes("画廊")) t += new Set(u.annexes.map(x => x.card.color)).size * 2;
+            if (an.includes("公园")) t += colorCounts['artisan-red'] * 4;
+            if (an.includes("杂货铺")) t += colorCounts['merchant-blue'] * 4;
+            if (an.includes("主教区")) t += colorCounts['religious-purple'] * 4;
+            if (an.includes("马厩")) t += colorCounts['noble-green'] * 4;
+        });
         return t;
     }
-    // 平局判定（原版：埋尸最多者胜）。本作抽象 AI 不建别馆、不埋尸，其"处理掉的尸体数"等价物即刺杀堆，
-    // 人类则用别馆下已埋的尸体数——两者都是"成功处理的尸体数"，作为统一的平局指标。
-    let playerBuried = player.annexes.reduce((s, a) => s + a.buried.length, 0);
+    // 平局判定（原版：埋尸最多者胜）——真规则下双方都用真实埋尸数
+    let playerBuried = playerBuriedCount();
     let standings = [{ name: '您', total: playerTotal, isHuman: true, tiebreak: playerBuried }];
-    aiUncles.forEach(u => standings.push({ name: u.name, total: uncleTotal(u), isHuman: false, tiebreak: u.killPile.length }));
+    aiUncles.forEach(u => standings.push({ name: u.name, total: uncleTotal(u), isHuman: false, tiebreak: uncleDisposedCount(u) }));
     standings.sort((a, b) => (b.total - a.total) || (b.tiebreak - a.tiebreak));
     let winner = standings[0];
     let playerWon = winner.isHuman;
@@ -2151,6 +2722,7 @@ function awardBuryLoot(corpse, annexName, autoBishop) {
     } else {
         addPlayerCash(loot);
         logMessage("玩家", `${prefix}将 ${corpse.name} 的尸体埋入 ${annexName} 下，掠夺 ${loot}F！`, "player");
+        if (loot >= 15) uncleReact('playerBigLoot'); // 大额进账，桌边有人眼红
     }
     playEffect('bury', `+${loot}F`, document.getElementById('player-annexes'));
 }
@@ -2209,26 +2781,119 @@ function renderRailMarkers() {
         rail.appendChild(m);
     }
 }
+// 座位顺序条：从主理人开始的行动次序，当前行动者高亮——像在真桌边看牌位
+function renderSeatOrder() {
+    let bar = document.getElementById('seat-order');
+    if (!bar) return;
+    if (!turnOrder.length) { bar.innerHTML = ''; return; }
+    let inAction = currentPhase === 'action1' || currentPhase === 'action2';
+    let chips = [];
+    for (let i = 0; i < turnOrder.length; i++) {
+        let idx = (firstActorIdx + i) % turnOrder.length;
+        let a = turnOrder[idx];
+        let label = a === 'player' ? '你' : aiUncles[a].name;
+        let cls = 'seat-chip' + (a === 'player' ? ' human' : '')
+            + (idx === firstActorIdx ? ' host' : '')
+            + (inAction && idx === activeActorIdx ? ' active' : '');
+        chips.push(`<span class="${cls}">${idx === firstActorIdx ? '🏠' : ''}${label}</span>`);
+    }
+    bar.innerHTML = `<span style="color:#78909c">本轮座次:</span> ` + chips.join('<span class="seat-arrow">→</span>')
+        + (inAction ? ` <span style="color:#78909c;margin-left:8px">动作 ${actionNumber}/2</span>` : '');
+}
+
+// 桌面感：一张牌从 fromEl 飞到 toEl（纯演出，prefers-reduced-motion 时自动跳过）
+function flyCard(fromEl, toEl, label) {
+    try {
+        if (!fromEl || !toEl || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        let f = fromEl.getBoundingClientRect(), t = toEl.getBoundingClientRect();
+        if (!f.width || !t.width) return;
+        let el = document.createElement('div');
+        el.className = 'fly-card';
+        el.innerText = label || '';
+        el.style.left = (f.left + f.width / 2 - 32) + 'px';
+        el.style.top = (f.top + f.height / 2 - 44) + 'px';
+        document.body.appendChild(el);
+        requestAnimationFrame(() => {
+            el.style.transform = `translate(${t.left + t.width / 2 - (f.left + f.width / 2)}px, ${t.top + t.height / 2 - (f.top + f.height / 2)}px) scale(0.6)`;
+            el.style.opacity = '0.1';
+        });
+        setTimeout(() => el.remove(), 750);
+    } catch (e) { /* 演出失败不影响逻辑 */ }
+}
+
+// 对手牌桌区：像坐在桌边一样看到每个叔叔的手牌(背面)、别馆田园、未埋尸体
+// 埋尸阶段还可以点击叔叔的别馆——把尸体埋进对方家、按原版规则平分赃款
 function renderExtraUncles() {
     let box = document.getElementById('extra-uncles');
     if (!box) return;
-    if (aiUncles.length <= 1) { box.innerHTML = ''; box.classList.add('hidden'); return; }
+    if (aiUncles.length === 0) { box.innerHTML = ''; box.classList.add('hidden'); return; }
     box.classList.remove('hidden');
-    box.innerHTML = `<h4><i data-lucide="users"></i> 其他叔叔</h4>` + aiUncles.slice(1).map(u => `
-        <div class="uncle-card" id="uncle-box-${u.idx}">
+    let buryMode = pendingAction.type === 'bury' && pendingAction.targetCorpse;
+    let corpse = pendingAction.targetCorpse;
+    let need = corpse && corpse.specialBurial === 'twins' ? 2 : 1;
+
+    box.innerHTML = `<h4><i data-lucide="users"></i> 对手牌桌</h4>` + aiUncles.map(u => {
+        let handBacks = (u.hand || []).slice(0, 9).map(() => `<span class="mini-back">🂠</span>`).join('')
+            + ((u.hand || []).length > 9 ? `<span class="mini-more">+${u.hand.length - 9}</span>` : '');
+        let annexChips = (u.annexes || []).map((a, ai2) => {
+            let cap = getAnnexCapacity(a.card);
+            let canBuryHere = buryMode && !(a.card.isTrailer && a.occupant)
+                && effectiveBuried(a) + need <= cap;
+            let chipCls = 'uncle-annex-chip' + (canBuryHere ? ' clickable highlight' : '');
+            let occ = a.card.isTrailer && a.occupant ? ` 🛏${cardName(a.occupant).slice(0, 4)}` : '';
+            let click = canBuryHere ? ` onclick="handleUncleAnnexSlotSelect(${u.idx}, ${ai2})"` : '';
+            return `<span class="${chipCls}"${click} title="${a.card.annexDesc || ''}">${a.card.annexName.split(' (')[0]} ⚰${effectiveBuried(a)}/${cap}${occ}</span>`;
+        }).join('');
+        let corpseBacks = u.corpses.map(() => `<span class="mini-corpse">🩸</span>`).join('');
+        // 回合聚光灯：轮到这位叔叔时牌桌发光 + 思考表情
+        let inAction = currentPhase === 'action1' || currentPhase === 'action2';
+        let isActing = inAction && turnOrder[activeActorIdx] === u.idx;
+        return `
+        <div class="uncle-card${isActing ? ' active-turn thinking' : ''}" id="uncle-box-${u.idx}">
             <div class="uncle-head"><span class="uncle-name">${u.name}</span><span class="uncle-diff">${shortDiffName(u.difficulty)}</span></div>
             <div class="uncle-stats">
-                <span>💰 ${u.cash}F</span><span>🎫 ${u.checks}×10F</span>
-                <span>🏠 ${u.keys.length}间</span><span>🔪 ${u.killPile.length}</span><span>🪙 ${u.bribePile.length}</span>
+                <span>💰 ${u.cash}F</span><span>🎫 ${formatChecks(u.checks)}</span><span>⚰️ 已埋 ${uncleDisposedCount(u)}</span>
             </div>
-        </div>`).join('');
+            <div class="uncle-zone"><label>手牌</label><div class="zone-cards">${handBacks || '<span class="zone-empty">无</span>'}</div></div>
+            <div class="uncle-zone"><label>别馆</label><div class="zone-cards">${annexChips || '<span class="zone-empty">无</span>'}</div></div>
+            <div class="uncle-zone"><label>未埋</label><div class="zone-cards">${corpseBacks || '<span class="zone-empty">无</span>'}</div></div>
+        </div>`;
+    }).join('');
+}
+
+// 玩家把尸体埋进叔叔的别馆（原版：可埋别人家、平分尸体口袋里的钱）
+function handleUncleAnnexSlotSelect(uncleIdx, annexIndex) {
+    if (pendingAction.type !== 'bury' || !pendingAction.targetCorpse || warnIfAwaitingPayment()) return;
+    let u = aiUncles[uncleIdx];
+    let slot = u && u.annexes[annexIndex];
+    if (!slot) return;
+    let corpse = pendingAction.targetCorpse;
+    let need = corpse.specialBurial === 'twins' ? 2 : 1;
+    if ((slot.card.isTrailer && slot.occupant) || effectiveBuried(slot) + need > getAnnexCapacity(slot.card)) {
+        logMessage("系统", "对方这座别馆埋不下。", "warn");
+        return;
+    }
+    pendingAction.targets = [corpse];
+    pendingAction.target = { corpse, uncleIdx, annexIndex };
+    let abbotCount = player.annexes.filter(a => a.card.annexName.includes("酒窖")).length;
+    let actualCost = Math.max(0, getCardRank(corpse, 'bury') - abbotCount - (objectEffects.buryDiscount || 0));
+    logMessage("玩家", `准备把尸体埋进 ${u.name} 的 [${slot.card.annexName}]（赃款与他平分）。需要支付 ${actualCost} 张帮工牌。`, "player");
+    if (actualCost === 0) finishPlayerAction();
+    else requestPaymentCards(actualCost);
+}
+
+// 50F 支票（扩展）：随时可用 5 张 10F 支票兑换 1 张 50F、不占行动——数字版自动捆票显示
+function formatChecks(n) {
+    let fifty = Math.floor(n / 5), ten = n % 5;
+    if (fifty === 0) return `10F支票 x${ten}`;
+    return `支票 ${n * 10}F (50F×${fifty}${ten ? ` + 10F×${ten}` : ''})`;
 }
 
 function renderUI() {
     document.getElementById('player-cash').innerText = player.cash;
-    document.getElementById('player-checks').innerText = `10F支票 x${player.checks}`;
+    document.getElementById('player-checks').innerText = formatChecks(player.checks);
     document.getElementById('ai-cash').innerText = ai.cash;
-    document.getElementById('ai-checks').innerText = `10F支票 x${ai.checks}`;
+    document.getElementById('ai-checks').innerText = formatChecks(ai.checks);
     let aiLabel = document.querySelector('.ai-wealth-box .wealth-label');
     if (aiLabel) aiLabel.innerText = `${ai.name}（${shortDiffName(ai.difficulty)}）:`;
 
@@ -2236,6 +2901,7 @@ function renderUI() {
     document.getElementById('ai-marker').style.left = `${(ai.cash / 40) * 90}%`;
     renderRailMarkers();
     renderExtraUncles();
+    renderSeatOrder();
 
     const roomsGrid = document.getElementById('inn-rooms-grid');
     roomsGrid.innerHTML = '';
@@ -2365,12 +3031,28 @@ function renderUI() {
     player.annexes.forEach((slot, index) => {
         let slotContainer = document.createElement('div');
         slotContainer.className = 'annex-slot-container';
-        
+
+        let isTrailerSlot = !!slot.card.isTrailer;
+        // 埋尸：可点击（占用中的拖车不能埋——原版"无人占用的拖车"才行）
         if (pendingAction.type === 'bury' && pendingAction.targetCorpse) {
-            slotContainer.classList.add('clickable');
-            slotContainer.onclick = () => handleAnnexSlotSelect(index);
+            if (!(isTrailerSlot && slot.occupant)) {
+                slotContainer.classList.add('clickable');
+                slotContainer.onclick = () => handleAnnexSlotSelect(index);
+            }
         }
-        
+        // 迎客：无尸空拖车是必填的入住目标
+        else if (currentPhase === 'welcome' && pendingWelcomeCard && isHumanHost()
+            && isTrailerSlot && !slot.occupant && slot.buried.length === 0) {
+            slotContainer.classList.add('clickable', 'highlight');
+            slotContainer.onclick = () => handleWelcomeTrailerSelect(index);
+        }
+        // 刺杀/拉拢：拖车住客视同客房旅客，可被选为目标
+        else if ((pendingAction.type === 'kill' || pendingAction.type === 'bribe') && isTrailerSlot && slot.occupant) {
+            slotContainer.classList.add('clickable', 'highlight');
+            let occ = slot.occupant;
+            slotContainer.onclick = () => (pendingAction.type === 'kill' ? handleKillSelect(occ) : handleBribeSelect(occ));
+        }
+
         let card = slot.card;
         let buriedHtml = '';
         if (slot.buried.length > 0) {
@@ -2380,7 +3062,13 @@ function renderUI() {
             });
             buriedHtml += '</div>';
         }
-        
+        // 拖车住客（视同客房旅客）
+        let occupantHtml = '';
+        if (isTrailerSlot && slot.occupant) {
+            let o = slot.occupant;
+            occupantHtml = `<div class="trailer-occupant" title="拖车住客（清晨退房 +1F；可被刺杀/拉拢）">🛏 ${cardName(o)} · ${o.loot}F</div>`;
+        }
+
         slotContainer.innerHTML = `
             <div class="card ${card.color}">
                 <div class="card-header">
@@ -2388,13 +3076,14 @@ function renderUI() {
                 </div>
                 <div class="card-body">
                     <span class="card-name">${annexLabel(card)}</span>
-                    <span class="card-role-label">别馆</span>
-                    <span style="font-size: 8px; color: #daa520; margin-top: 4px;">容量: ${slot.buried.length}/${getAnnexCapacity(card)}</span>
+                    <span class="card-role-label">${isTrailerSlot ? '拖车' : '别馆'}</span>
+                    <span style="font-size: 8px; color: #daa520; margin-top: 4px;">容量: ${effectiveBuried(slot)}/${getAnnexCapacity(card)}</span>
                 </div>
                 <div class="card-footer">
                     <span class="annex-ability">${card.annexDesc}</span>
                 </div>
             </div>
+            ${occupantHtml}
             ${buriedHtml}
         `;
         let aCard = slotContainer.querySelector('.card');
@@ -2468,8 +3157,11 @@ function renderUI() {
         }
     }
     
-    document.getElementById('ai-stat-bribe').innerText = `${ai.bribePile.length} 张`;
-    document.getElementById('ai-stat-kill').innerText = `${ai.killPile.length} 具`;
+    // 真规则 AI 状态：手牌（只给你看张数——牌背）/ 别馆与埋尸 / 客房 / 未埋尸体
+    document.getElementById('ai-stat-bribe').innerText = `${(ai.hand || []).length} 张`;
+    let aiSlots = (ai.annexes || []).reduce((s, a) => s + getAnnexCapacity(a.card), 0);
+    let aiBuried = (ai.annexes || []).reduce((s, a) => s + a.buried.length, 0);
+    document.getElementById('ai-stat-kill').innerText = `${(ai.annexes || []).length} 座 (埋${aiBuried}/${aiSlots})`;
     syncAIKeys();
     document.getElementById('ai-stat-rooms').innerText = `${ai.keys.length} 间`;
     document.getElementById('ai-stat-corpses').innerText = `${ai.corpses.length} 具`;
@@ -2694,13 +3386,17 @@ function playObject(instanceId) {
     } else if (obj.effect === 'return_bury') {
         objectEffects.returnHelpersFor.bury = true;
     } else if (obj.effect === 'catchup') {
-        let playerBuried = player.annexes.reduce((s, a) => s + a.buried.length, 0);
-        let aiBuried = Math.max(...aiUncles.map(u => u.killPile.length)); // 与「埋尸最多的对手」比较
-        if (playerBuried < aiBuried) {
-            addPlayerCash(6);
-            logMessage("道具", "[告解室] 你埋的尸体比对手少，立刻获得 6F。", "player");
+        // 原版：从「处理尸体最多的玩家」身上拿 6F；若对方现金不足 6F，则拿走他的全部现金（零和转移，非银行发钱）
+        let playerBuried = playerBuriedCount();
+        let leader = aiUncles.slice().sort((a, b) => uncleDisposedCount(b) - uncleDisposedCount(a))[0];
+        let leaderBuried = leader ? uncleDisposedCount(leader) : 0;
+        if (leader && playerBuried < leaderBuried) {
+            let taken = Math.min(6, leader.cash);
+            leader.cash -= taken;
+            addPlayerCash(taken);
+            logMessage("道具", `[告解室] 你处理的尸体比 ${leader.name} 少，从他身上拿走 ${taken}F。`, "player");
         } else {
-            logMessage("道具", "[告解室] 你埋的尸体不比对手少，本次没有收益。", "player");
+            logMessage("道具", "[告解室] 你处理的尸体不比任何对手少，本次没有收益。", "player");
         }
     } else if (obj.effect === 'remove_corpse') {
         let corpse = player.corpses.shift();
@@ -2745,7 +3441,7 @@ const TUTORIAL_PAGES = [
     {
         title: "🎯 你的目标",
         body: `<p>你是 1831 年法国乡村一家<strong>黑店</strong>的老板。在游戏的<strong>两个季度</strong>里，把投宿的旅客拉拢、谋杀、埋掉，攒下尽可能多的<strong>法郎(F)</strong>。</p>
-               <p>结算时，<strong>谁的总财富多谁就赢</strong> —— 你要比"邪恶叔叔"AI 更狠、更有钱。</p>
+               <p>结算时，<strong>谁的总财富多谁就赢</strong> —— 桌上还有 1~3 位 AI 叔叔，他们和你<strong>用完全相同的规则</strong>玩：拉拢帮工、付工资、建别馆、埋尸体、躲警察。</p>
                <p class="tut-tip">💡 这是一款关于精打细算的"犯罪经营"游戏，每一步都要权衡风险与收益。</p>`
     },
     {
@@ -2799,8 +3495,8 @@ const TUTORIAL_PAGES = [
         title: "🏆 怎么获胜",
         body: `<p>两个季度的旅客牌堆都耗尽后，游戏结束。比拼<strong>总财富</strong>：</p>
                <p style="text-align:center;font-size:15px;color:#ffca28;">现金 + 支票(每张10F) + 别馆终局加成</p>
-               <p>比邪恶叔叔有钱，你就是这片乡野最令人侧目的<strong>黑店之王</strong>！👑</p>
-               <p class="tut-tip">💡 想要最接近真人对手的体验，难度选 <strong>"策略叔叔 (真人级)"</strong> —— 他会抢劫肥羊、专断你的财路。</p>`
+               <p>比所有叔叔都有钱，你就是这片乡野最令人侧目的<strong>黑店之王</strong>！👑（平局时埋尸多者胜）</p>
+               <p class="tut-tip">💡 叔叔们与你同规则同资源：盯着对手牌桌上的<strong>手牌数、未埋尸体和别馆</strong>，像在真桌上一样读他们的局势。你还可以把尸体<strong>埋进对手的别馆</strong>——按规矩与他平分赃款。</p>`
     }
 ];
 let tutorialPage = 0;
