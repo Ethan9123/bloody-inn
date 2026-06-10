@@ -1904,15 +1904,16 @@ function getRoundPhase() {
     return roundNum <= 2 ? 'early' : 'mid';
 }
 // 每档难度的策略性格（同一套引擎、不同权重，使 4 档各有性格又都有大局观）
+// synergy：对「基于自己已建建筑调整后续行动」的领悟程度（1=完全协同思维，0=完全不懂）
 const AI_PROFILES = {
-    silly:      { kill: 1.0,  bribe: 0.2, room: 0.7, service: 0.7, deny: 0.2, launderAt: 36 },
-    scheming:   { kill: 0.9,  bribe: 1.2, room: 0.9, service: 0.9, deny: 0.7, launderAt: 34 },
-    murderous:  { kill: 1.3,  bribe: 0.5, room: 0.7, service: 0.7, deny: 0.9, launderAt: 34 },
-    mastermind: { kill: 1.15, bribe: 1.0, room: 1.0, service: 1.0, deny: 1.0, launderAt: 32 },
+    silly:      { kill: 1.0,  bribe: 0.2, room: 0.7, service: 0.7, deny: 0.2, launderAt: 36, synergy: 0.25 },
+    scheming:   { kill: 0.9,  bribe: 1.2, room: 0.9, service: 0.9, deny: 0.7, launderAt: 34, synergy: 0.7 },
+    murderous:  { kill: 1.3,  bribe: 0.5, room: 0.7, service: 0.7, deny: 0.9, launderAt: 34, synergy: 0.7 },
+    mastermind: { kill: 1.15, bribe: 1.0, room: 1.0, service: 1.0, deny: 1.0, launderAt: 32, synergy: 1.0 },
     // 学习叔叔：由 ml/optimize_ai.js 自我对弈 + 进化策略(ES) 学到的权重（含各自的阶段调节）。
     // 取自适应度可信的候选(约 68% 对基线胜率)；高于此的候选被判为过拟合模拟器而舍弃。
     ml: {
-        kill: 1.40, bribe: 0.95, room: 0.60, service: 0.85, deny: 1.50, launderAt: 28,
+        kill: 1.40, bribe: 0.95, room: 0.60, service: 0.85, deny: 1.50, launderAt: 28, synergy: 1.0,
         phase: {
             early: { kill: 0.40, room: 1.60, service: 1.40 },
             mid:   { kill: 1.25, room: 0.70, service: 1.30 },
@@ -1925,6 +1926,45 @@ const PHASE_MOD = {
     mid:   { kill: 1.0,  room: 1.0,  service: 1.0 },
     late:  { kill: 1.35, room: 0.25, service: 0.4 },
 };
+
+// 长线思维①：估算本局还剩多少轮——引擎型建筑的价值随剩余轮数折现
+// （每轮消耗的旅客 ≈ 开放客房数；第一季度结束后离店堆会洗回成第二季度牌堆）
+function estimateRemainingRounds() {
+    let perRound = Math.max(1, openRoomCount());
+    let r = Math.ceil(travelerDeck.length / perRound);
+    if (seasonNum === 1) {
+        // 第二季度牌堆 ≈ 当前离店堆 + 本季度还会流入离店堆的牌（按 7 折估算：部分被杀/拉拢/埋掉）
+        let season2 = (exitStack.length + travelerDeck.length * 0.7);
+        r += Math.ceil(season2 / perRound);
+    }
+    return Math.max(1, Math.min(14, r));
+}
+
+// 长线思维②：建筑协同——盘点自己已建的建筑，得到对各行动的倾向乘数
+// 「我建了熊笼→杀人便宜→多杀」「我建了会客厅→拉拢便宜→多攒人」「有空坑→该去填」「没坑→先建坑」
+function uncleSynergy(self, prof) {
+    let w = (prof && prof.synergy !== undefined) ? prof.synergy : 1;
+    const has = names => uncleDiscount(self, Array.isArray(names) ? names : [names]);
+    let freeSlots = uncleFreeBuryCapacity(self);
+    let syn = {
+        kill: 1 + w * (0.25 * has("熊笼") + 0.12 * has("酒窖") + (freeSlots > 0 ? 0.18 : 0) + 0.2 * has("肉铺")),
+        bribe: 1 + w * (0.25 * has("会客厅") + 0.18 * has("密室") + 0.1 * has("商铺")),
+        build: 1 + w * (0.3 * has("车间")),
+        bury: 1 + w * (0.15 * has("酒窖") + 0.18 * has("小教堂") + 0.1 * has("地下墓室")),
+        notes: [],
+    };
+    // 没坑还压着尸体：杀人冲动降温，建坑冲动升温（在 plans 里另有 needSlots 加分，这里再压一道）
+    if (self.corpses.length >= freeSlots && freeSlots === 0 && self.corpses.length > 0) {
+        syn.kill *= (1 - 0.45 * w);
+        syn.notes.push('坑不够，先别杀了');
+    }
+    if (w > 0.5) {
+        if (has("熊笼")) syn.notes.push('熊笼在手，杀人省帮工');
+        if (has("会客厅")) syn.notes.push('会客厅让拉拢更便宜');
+        if (has("车间")) syn.notes.push('车间让扩建更划算');
+    }
+    return syn;
+}
 
 // ==========================================
 // 真规则 AI：叔叔与人类同规则（帮工成本/手牌/别馆/埋尸/工资）
@@ -1956,6 +1996,7 @@ function uncleHelperLoss(self, type, cost, excludeId) {
     return used >= cost ? loss : Infinity;
 }
 // 执行支付：与人类同规则（特长匹配回手 / 农民回酒馆 / 其余进离店堆）
+// 长线：弃牌顺序按「建造价值升序」——最值钱的引擎建材（花园/会客厅/熊笼…）留到最后才舍得花
 function uncleSpendHelpers(self, type, cost, excludeId) {
     if (cost <= 0) return { paid: [], returned: 0 };
     let pool = self.hand.filter(c => c.id !== excludeId);
@@ -1964,7 +2005,7 @@ function uncleSpendHelpers(self, type, cost, excludeId) {
     pool.filter(c => c.aptitude === type).forEach(pick);                                   // 特长匹配（回手，零损耗）
     pool.filter(c => c.role === 'peasant' && !chosen.includes(c)).forEach(pick);           // 农民（回酒馆）
     pool.filter(c => !chosen.includes(c) && c.aptitude !== type)
-        .sort((a, b) => getCardRank(a, 'bribe') - getCardRank(b, 'bribe')).forEach(pick);  // 杂牌按低等级弃
+        .sort((a, b) => annexBuildValue(self, a) - annexBuildValue(self, b)).forEach(pick); // 杂牌按建造价值低者先弃
     if (chosen.length < cost) return null;
     let returned = 0;
     chosen.forEach(helper => {
@@ -2032,25 +2073,58 @@ function uncleAnnexImmediateEffect(self, card) {
         }
     }
 }
-// 候选建造卡的引擎价值估算（埋尸容量 + 常用效果 + 建造时的即时现金）
+// 长线思维③：建造估值 = 即时现金 + 每轮收益×剩余轮数(折现) + 折扣×预期使用次数 + 终局加成
+// → 前期(剩余轮数多)引擎建筑自然胜出，终局只有即时现金还值钱——AI 自己会"知道什么牌前期建"
 function annexBuildValue(self, card) {
-    let v = getAnnexCapacity(card) * 2.5;
     let an = card.annexName || '';
-    if (an.includes("花园")) v += 5;          // 每轮 +2F 租金
-    if (an.includes("酒厂")) v += 4;          // 工资减免
-    if (an.includes("酒窖") || an.includes("会客厅") || an.includes("车间") || an.includes("熊")) v += 3.5; // 行动折扣
-    if (an.includes("温室") || an.includes("议事厅")) v += 3;  // 终局支票加成
-    if (an.includes("菜园") || an.includes("报摊") || an.includes("祭坛")) v += 2;
-    if (card.isTrailer) v += 1.5;             // 拖车：1F/晨 + 埋尸
-    // 建造时的即时现金（按一半折算进估值）
+    let prof = AI_PROFILES[self.difficulty] || AI_PROFILES.mastermind;
+    let R = estimateRemainingRounds();        // 剩余轮数（引擎价值的折现系数）
+    let v = getAnnexCapacity(card) * (2.2 + Math.min(2, self.corpses.length)); // 埋尸容量：压着尸体时更值钱
+
+    // ── 每轮收益类（引擎）：价值 = 每轮收益 × 剩余轮数 × 0.85（执行折扣） ──
+    if (an.includes("花园")) v += 2 * R * 0.85;
+    if (an.includes("客房服务")) v += 1.3 * R * 0.85;          // 平均住客等级 ≈1.3
+    if (an.includes("酒厂")) v += Math.min(1, self.hand.length / 3) * R * 0.8; // 手牌越多省得越多
+    if (card.isTrailer) v += 1 * R * 0.7;                       // 拖车 1F/晨 + 上面已算容量
+    if (an.includes("嘉年华摊位") && expansionOptions.carnies) v += 1.2 * R * 0.6;
+
+    // ── 折扣类：价值 = 省 1 张帮工(≈1.2F) × 预期还会用几次（随性格与剩余轮数） ──
+    let useRate = R * 0.5; // 每 2 轮用一次同类行动的保守估计
+    if (an.includes("熊笼")) v += 1.2 * useRate * prof.kill;
+    if (an.includes("会客厅")) v += 1.2 * useRate * prof.bribe;
+    if (an.includes("车间")) v += 1.2 * Math.min(useRate, self.hand.filter(c => c.role !== 'peasant').length);
+    if (an.includes("酒窖")) v += 1.2 * useRate * prof.kill * 0.8;  // 埋葬频率跟着杀人倾向走
+    if (an.includes("密室") || an.includes("小教堂")) v += 1.0 * useRate * 0.6;
+    if (an.includes("肉铺") || an.includes("地下墓室") || an.includes("商铺") || an.includes("啤酒厂")) v += 2;
+
+    // ── 终局支票加成：越早建、之后攒的每张支票越值钱 ──
+    if (an.includes("温室")) v += (self.checks + R / 3) * 3 * 0.7;
+    if (an.includes("议事厅")) v += (self.checks + R / 3) * 2 * 0.7;
+    if (an.includes("画廊")) v += new Set(self.annexes.map(x => x.card.color)).size * 2 * 0.7;
+
+    // ── 颜色协同：即时计数类 + 终局离店堆计数类（离店堆还会随轮数增长） ──
+    const myColor = c => self.annexes.filter(a => a.card.color === c).length;
+    if (an.includes("菜园")) v += myColor("artisan-red") + 1;
+    if (an.includes("报摊")) v += myColor("merchant-blue") + 1;
+    if (an.includes("祭坛")) v += myColor("religious-purple") + 1;
+    const exitColor = c => exitStack.filter(x => x.color === c).length;
+    if (an.includes("公园")) v += (exitColor("artisan-red") + R * 0.8) * 4 * 0.25;
+    if (an.includes("杂货铺")) v += (exitColor("merchant-blue") + R * 0.8) * 4 * 0.25;
+    if (an.includes("主教区")) v += (exitColor("religious-purple") + R * 0.8) * 4 * 0.25;
+    if (an.includes("马厩")) v += (exitColor("noble-green") + R * 0.8) * 4 * 0.25;
+
+    // ── 即时现金：确定收益，原值计入 ──
     let instant = 0;
     if (an.includes("凉亭")) instant = 18;
     else if (an.includes("豪华餐厅")) instant = 9;
     else if (an.includes("珠宝室")) instant = 8;
     else if (an.includes("特大号床") || an.includes("马车站")) instant = 6;
-    else if (an.includes("豪华吊灯") || an.includes("公园") || an.includes("马厩") || an.includes("杂货铺") || an.includes("主教区") || an.includes("铁锤游戏") || an.includes("档案室")) instant = 4;
-    v += instant * 0.5;
-    if (an.includes("刀靶") && allOccupiedSpots().some(s => getCardRank(s.occupant, 'kill') === 0 && s.occupant.role !== 'police')) v += 3; // 免费刺杀一名0级
+    else if (an.includes("豪华吊灯") || an.includes("铁锤游戏") || an.includes("档案室")) instant = 4;
+    v += instant * 0.9;
+    if (an.includes("厢房") && rooms.some(r => r.key === 'neutral')) v += 1.5 * R * 0.5; // 多一间房=每轮多租金/猎物
+    if (an.includes("丝绸农场")) v += rooms.filter(r => r.key === self.idx && r.occupant).length * 3 * 0.9;
+    if (an.includes("酒桶")) v += rooms.filter(r => r.key === 'neutral' && r.occupant).length * 3 * 0.9;
+    if (an.includes("刀靶") && allOccupiedSpots().some(s => getCardRank(s.occupant, 'kill') === 0 && s.occupant.role !== 'police')) v += 3;
     return v;
 }
 
@@ -2124,8 +2198,17 @@ function aiStrategicAction(self) {
     const handSize = self.hand.length;
     const wagePressure = Math.max(0, handSize - 4) * 1.5; // 手牌太多→明早工资负担
     const freeBury = uncleFreeBuryCapacity(self);
+    const syn = uncleSynergy(self, prof); // 长线协同：基于自己已建建筑调整各行动倾向
 
-    // 为每个可选行动按「性格 × 阶段」估收益分，再挑最高的执行（全部经过可负担性闸门）
+    // 长线思维④：备料意图——手里攥着高价值建材但帮工不够建时，接下来的目标就是"凑料"
+    // （这是跨步规划：先雇农民/拉便宜的人当燃料，下一轮再把引擎建起来）
+    let buildables0 = self.hand.filter(c => c.role !== 'peasant' && c.role !== 'police');
+    let bestBuild = buildables0.length ? buildables0.reduce((m, c) => annexBuildValue(self, c) > annexBuildValue(self, m) ? c : m, buildables0[0]) : null;
+    let bestBuildVal = bestBuild ? annexBuildValue(self, bestBuild) : 0;
+    let fuelShort = bestBuild ? Math.max(0, uncleNetCost(self, 'build', bestBuild) - (handSize - 1)) : 0;
+    let fuelIntent = (fuelShort > 0 && !lateGame) ? Math.min(9, bestBuildVal * 0.35) * (prof.synergy !== undefined ? prof.synergy : 1) : 0;
+
+    // 为每个可选行动按「性格 × 阶段 × 建筑协同」估收益分，再挑最高的执行（全部经过可负担性闸门）
     let plans = [];
 
     if (occupied.length > 0) {
@@ -2139,29 +2222,38 @@ function aiStrategicAction(self) {
             let kScore = killTarget.occupant.loot * 0.8 * prof.kill * pm.kill
                 - loss * 1.8 - overflowRisk - policeRisk
                 + (isOpp(killTarget) ? 6 : 0) * prof.deny;
+            if (kScore > 0) kScore *= syn.kill; // 协同：熊笼/空坑/酒窖让杀人更有吸引力
             plans.push({ type: 'kill', spot: killTarget, cost: kCost, score: kScore });
         }
 
-        // B) 拉拢：目标进手牌成为帮工燃料/建材——偏好高等级、特长有用、对手房间
+        // B) 拉拢：目标进手牌成为帮工燃料/建材——偏好「能建好别馆」的目标（长线：拉拢是建造的入口）
         let bribeCands = occupied.filter(s => s.occupant.role !== 'peasant' && s.occupant.role !== 'police');
         if (bribeCands.length > 0) {
-            let bribeTarget = bribeCands.slice().sort((a, b) => getCardRank(b.occupant, 'bribe') - getCardRank(a.occupant, 'bribe'))[0];
+            // 选目标改为按「未来建造价值 + 等级」综合排序，而非单看等级——AI 会盯上能建引擎的旅客
+            let bribeTarget = bribeCands.slice().sort((a, b) =>
+                (annexBuildValue(self, b.occupant) * 0.35 + getCardRank(b.occupant, 'bribe') * 1.2)
+              - (annexBuildValue(self, a.occupant) * 0.35 + getCardRank(a.occupant, 'bribe') * 1.2))[0];
             let bCost = uncleNetCost(self, 'bribe', bribeTarget.occupant);
             if (uncleCanPay(self, bCost)) {
                 let loss = uncleHelperLoss(self, 'bribe', bCost);
                 let handValue = 2 + getCardRank(bribeTarget.occupant, 'bribe') * 1.2
-                    + annexBuildValue(self, bribeTarget.occupant) * 0.25; // 未来可建别馆的潜力
-                let bScore = handValue * prof.bribe - loss * 1.5 - wagePressure
+                    + annexBuildValue(self, bribeTarget.occupant) * 0.35; // 未来可建别馆的潜力（长线入口）
+                // 长线意图：产业还少时，拉人就是在备料——前中期给明确加成
+                let engineIntent = (!lateGame && self.annexes.length < 4) ? 3.5 : 0;
+                // 备料意图：便宜的拉拢（净费≤1）既添燃料又添建材
+                let fuelBonus = (bCost <= 1) ? fuelIntent : 0;
+                let bScore = handValue * prof.bribe - loss * 1.5 - wagePressure * 0.6 + engineIntent + fuelBonus
                     + (isOpp(bribeTarget) ? 4 : 0) * prof.deny
                     - (lateGame ? 3 : 0); // 终局囤人没用
+                if (bScore > 0) bScore *= syn.bribe; // 协同：会客厅/密室让拉拢更划算
                 plans.push({ type: 'bribe', spot: bribeTarget, cost: bCost, score: bScore });
             }
         }
     }
 
-    // B2) 雇农民：免费从酒馆抓 2 名（手牌引擎的燃料）
+    // B2) 雇农民：免费从酒馆抓 2 名（建造/刺杀的燃料——手牌越空越急；攥着建材缺料时是头号优先）
     if (bistro.length > 0 && handSize < 5 && !lateGame) {
-        plans.push({ type: 'peasants', score: 5.5 - handSize * 0.8 - wagePressure });
+        plans.push({ type: 'peasants', score: 6.5 - handSize * 1.0 - wagePressure * 0.5 + fuelIntent });
     }
 
     // C) 埋尸：把尸体的油水真正落袋；警察临近时是救命动作
@@ -2188,7 +2280,9 @@ function aiStrategicAction(self) {
             let loss = uncleHelperLoss(self, 'bury', bCost);
             let gain = ownSlot ? corpse.loot : Math.ceil(corpse.loot / 2); // 埋对手别馆要平分
             let urgency = (policeLurking ? 14 : 0) + self.corpses.length * 2.5 + (lateGame ? 5 : 0);
-            plans.push({ type: 'bury', corpse, slot: ownSlot || rivalSlot, slotIsOwn: !!ownSlot, rivalOwner, cost: bCost, score: gain * 0.6 + urgency - loss * 1.5 });
+            let yScore = gain * 0.6 + urgency - loss * 1.5;
+            if (yScore > 0) yScore *= syn.bury; // 协同：酒窖/小教堂让埋葬更顺手
+            plans.push({ type: 'bury', corpse, slot: ownSlot || rivalSlot, slotIsOwn: !!ownSlot, rivalOwner, cost: bCost, score: yScore });
         }
     }
 
@@ -2199,23 +2293,34 @@ function aiStrategicAction(self) {
         let bCost = uncleNetCost(self, 'build', cand);
         if (uncleCanPay(self, bCost, cand.id)) {
             let loss = uncleHelperLoss(self, 'build', bCost, cand.id);
-            let needSlots = self.corpses.length > freeBury ? 5 : 0; // 急需埋尸坑
-            // 建别馆是中期引擎（埋尸坑+折扣+收入），不能只跟"占房"的早期权重走
-            let dScore = (annexBuildValue(self, cand) - loss * 1.5 + needSlots) * prof.room * (pm.room * 0.35 + 0.65) * 0.85
-                - (lateGame ? 4 : 0);
+            let needSlots = self.corpses.length > freeBury ? 5 + self.corpses.length * 2 : 0; // 急需埋尸坑（压尸越多越急）
+            // 建造执行决心：凑齐了建材和帮工的窗口稍纵即逝（工资/花帮工都会关掉它）——
+            // 真人会"今晚拉到人、今晚就建起来"，所以可负担的非终局建造给一笔果断加成
+            let commitBonus = !lateGame ? 3 + Math.min(3, annexBuildValue(self, cand) * 0.08) : 0;
+            // 建别馆估值已含「剩余轮数折现」——前期引擎自然高分；这里再叠车间协同
+            // prof.room 只取一半权重：那是"占房"性格，不该全额决定"盖产业"的意愿
+            let buildProf = prof.room * 0.5 + 0.5;
+            let dScore = (annexBuildValue(self, cand) * 0.7 - loss * 1.5 + needSlots) * buildProf * (pm.room * 0.25 + 0.75) * 0.85
+                + commitBonus - (lateGame ? 4 : 0);
+            if (dScore > 0) dScore *= syn.build; // 协同：车间让继续扩建更划算
             plans.push({ type: 'build', card: cand, cost: bCost, score: dScore });
         }
     }
 
-    // E) 占房（早期权重高、后期几乎不扩张）
-    if (neutralRoom && self.keys.length < 4) plans.push({ type: 'room', score: 6 * prof.room * pm.room });
+    // E) 占房（早期权重高、后期几乎不扩张；边际递减——房子越多，再占一间越不值）
+    if (neutralRoom && self.keys.length < 4) {
+        plans.push({ type: 'room', score: Math.max(2, 6 - (self.keys.length - 1) * 1.2) * prof.room * pm.room });
+    }
     // F) 布置客房服务（早期建立稳定收入引擎）
     if (unservicedMine) plans.push({ type: 'room_service', score: 5 * prof.service * pm.service });
     // G) 兜底：跳过（真规则：没有"白拿支票"这种行动——洗钱只是现金换支票）
     plans.push({ type: 'pass', score: 1 });
     // H) 现金接近上限就洗钱落袋（阈值随性格不同；现金不足 10F 洗不了）
+    //    长线协同：建了[温室]/[议事厅]后每张支票终局更值钱 → 更早、更勤地洗钱
+    let checkBonusAnnexes = uncleDiscount(self, ["温室", "议事厅"]);
+    let effLaunderAt = Math.max(12, prof.launderAt - 5 * checkBonusAnnexes);
     if (self.cash >= 36) plans.push({ type: 'launder', score: 100 });
-    else if (self.cash >= Math.max(10, prof.launderAt)) plans.push({ type: 'launder', score: 9 });
+    else if (self.cash >= effLaunderAt) plans.push({ type: 'launder', score: 9 + checkBonusAnnexes * 3 });
 
     // 记仇：玩家动过这位叔叔的房客/地盘后，他对玩家目标的"拆台"评分加权
     if (self.grudge && self.grudge.heat > 0) {
@@ -2227,7 +2332,9 @@ function aiStrategicAction(self) {
     }
 
     plans.sort((a, b) => b.score - a.score);
+    self._lastPlans = plans.map(p => ({ type: p.type, score: +p.score.toFixed(1) })); // 调参探针
     let plan = pickPlanSoftmax(plans, self.difficulty); // 带噪声的拟人决策
+    self._lastPick = plan.type;
     const anchor = id => document.getElementById(id);
     const payLine = pay => pay && pay.paid.length
         ? `打出 ${pay.paid.length} 名帮工${pay.returned ? `（${pay.returned} 名特长匹配回手）` : ''}，`
@@ -2241,7 +2348,8 @@ function aiStrategicAction(self) {
         victim.isDead = true;
         self.corpses.push(victim); // 真规则：尸体面朝下放在面前，埋了才有钱，警察来了要罚！
         let denial = isOpp(plan.spot) ? '，顺手断了对手的财路！' : '。';
-        aiThink(self, `${self.name}${payLine(pay)}在${plan.spot.label}干掉了 ${victim.name}${denial}尸体（${victim.loot}F 油水）还没埋。`);
+        let killSyn = (uncleDiscount(self, ["熊笼"]) > 0 && Math.random() < 0.5) ? '（熊笼帮忙省了帮工，这单几乎没本钱）' : '';
+        aiThink(self, `${self.name}${payLine(pay)}在${plan.spot.label}干掉了 ${victim.name}${denial}尸体（${victim.loot}F 油水）还没埋。${killSyn}`);
         playEffect('kill', victim.name, fromEl);
         flyCard(fromEl, anchor('uncle-box-' + self.idx), '💀 ' + victim.name.split(' (')[0]);
         uncleSay(self, 'kill');
@@ -2294,7 +2402,20 @@ function aiStrategicAction(self) {
         if (hi !== -1) self.hand.splice(hi, 1);
         self.annexes.push({ card: plan.card, buried: [] });
         uncleAnnexImmediateEffect(self, plan.card);
-        aiThink(self, `${self.name}${payLine(pay)}把手里的 ${plan.card.name} 改建成了 [${plan.card.annexName}]。`);
+        // 长线台词：前期建引擎建筑时说出规划意图（让人感觉它"知道前期建什么"）
+        let an = plan.card.annexName || '';
+        let isEngine = ["花园", "客房服务", "酒厂", "熊笼", "会客厅", "车间", "酒窖", "温室", "议事厅"].some(k => an.includes(k));
+        let buildSyn = '';
+        if (isEngine && getRoundPhase() !== 'late' && Math.random() < 0.6) {
+            if (an.includes("熊笼")) buildSyn = '（往后每一刀都省一名帮工——接下来就该多动刀了）';
+            else if (an.includes("会客厅")) buildSyn = '（拉拢从此便宜一档，先把人手攒起来）';
+            else if (an.includes("车间")) buildSyn = '（扩建更便宜了，产业要一座接一座）';
+            else if (an.includes("酒窖")) buildSyn = '（埋人省帮工——尸体再多也不怕了）';
+            else if (an.includes("花园") || an.includes("客房服务")) buildSyn = '（每一轮都进账，越早建越赚）';
+            else if (an.includes("酒厂")) buildSyn = '（工资省下来，养得起更多人手）';
+            else if (an.includes("温室") || an.includes("议事厅")) buildSyn = '（之后每张支票都更值钱，得勤洗钱了）';
+        }
+        aiThink(self, `${self.name}${payLine(pay)}把手里的 ${plan.card.name} 改建成了 [${plan.card.annexName}]。${buildSyn}`);
         uncleSay(self, 'build');
         playEffect('build', plan.card.annexName, anchor('uncle-box-' + self.idx) || document.querySelector('.ai-status-box'));
     } else if (plan.type === 'room') {
@@ -2626,7 +2747,7 @@ function morningStepWages() {
             let sorted = [...u.hand].sort((a, b) => {
                 if (a.role === 'peasant' && b.role !== 'peasant') return -1;
                 if (b.role === 'peasant' && a.role !== 'peasant') return 1;
-                return a.rank - b.rank;
+                return annexBuildValue(u, a) - annexBuildValue(u, b); // 付不起时先放走没建造价值的，保住引擎建材
             });
             let dismissed = sorted.slice(0, unpaid);
             dismissed.forEach(c => {
@@ -3151,10 +3272,13 @@ function renderUI() {
         slotContainer.className = 'annex-slot-container';
 
         let isTrailerSlot = !!slot.card.isTrailer;
-        // 埋尸：可点击（占用中的拖车不能埋——原版"无人占用的拖车"才行）
+        // 埋尸：仅当坑位真的放得下才可点击（满坑不再误导玩家；占用中的拖车不能埋；大胡子不能埋自家别馆）
         if (pendingAction.type === 'bury' && pendingAction.targetCorpse) {
-            if (!(isTrailerSlot && slot.occupant)) {
-                slotContainer.classList.add('clickable');
+            let needSlots = pendingAction.targetCorpse.specialBurial === 'twins' ? 2 : 1;
+            let hasRoom = effectiveBuried(slot) + needSlots <= getAnnexCapacity(slot.card);
+            let beardedBlock = pendingAction.targetCorpse.specialBurial === 'bearded';
+            if (!(isTrailerSlot && slot.occupant) && hasRoom && !beardedBlock) {
+                slotContainer.classList.add('clickable', 'highlight');
                 slotContainer.onclick = () => handleAnnexSlotSelect(index);
             }
         }
