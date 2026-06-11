@@ -1020,8 +1020,17 @@ function anyCarnieInPlay() {
 }
 
 function resolveCarnieEvent() {
-    if (!currentEvent || !anyCarnieInPlay()) return;
+    if (!currentEvent) return;
+    // 原版："无论是否结算，弃置事件卡"——清晨没有嘉年华住客时事件不生效，但卡必须进弃牌堆
+    if (!anyCarnieInPlay()) {
+        logMessage("事件", `嘉年华事件【${currentEvent.name}】未结算（旅馆中已无嘉年华旅客），弃置。`, "system");
+        eventDiscard.push(currentEvent);
+        currentEvent = null;
+        return;
+    }
     logMessage("事件", `结算嘉年华事件：【${currentEvent.name}】`, "warn");
+    // 大横幅：事件结算是全桌大事，不能只藏在日志里
+    showBanner(`⚡ ${currentEvent.name}`, currentEvent.desc, 'carnie');
 
     if (currentEvent.id === 'blackmail' || currentEvent.id === 'red_herring') {
         roundEffects.forceInvestigation = true;
@@ -2709,7 +2718,8 @@ function morningStepWages() {
             if (c.role === 'peasant') bistro.push(c);
             else exitStack.push(c);
         });
-        logMessage("事件", "惨败事件：你的帮工四散离去，本轮无需再支付这些工资。", "warn");
+        showBanner('💥 惨败事件！', `你的 ${dismissed.length} 名帮工全部四散离去（事件效果，所有玩家同样遭殃）`, 'wage');
+        logMessage("事件", `惨败事件：你的 ${dismissed.length} 名帮工四散离去（农民回酒馆、其余进离店堆），本轮无需再支付这些工资。`, "warn");
         playEffect('wage', '帮工四散', document.querySelector('.player-wealth-box'));
     }
     // 惨败事件对所有玩家生效（原版："the players"）——叔叔们的帮工也四散
@@ -2772,7 +2782,8 @@ function morningStepWages() {
                 if (c.role === 'peasant') bistro.push(c);
                 else exitStack.push(c);
             });
-            logMessage("玩家", `现金不足，只支付了 ${paid}F。${dismissed.length} 名未拿到工资的帮工离开。`, "warn");
+            showBanner('💸 发不起工资！', `现金只有 ${paid}F——${dismissed.length} 名没拿到工资的帮工离开了你（工资只能用现金付，支票不行）`, 'wage');
+            logMessage("玩家", `现金不足，只支付了 ${paid}F。${dismissed.length} 名未拿到工资的帮工离开（${dismissed.map(c => c.name.split(' ')[0]).join('、')}）。`, "warn");
         }
     } else {
         logMessage("玩家", "您手头没有帮手，无需支付清晨工资。", "player");
@@ -3310,7 +3321,20 @@ function renderUI() {
         attachCardTip(cardDiv, card, 'hand');
         handDiv.appendChild(cardDiv);
     });
-    document.getElementById('hand-count').innerText = `${player.hand.length} 张`;
+    // 工资预报：手牌就是明早的账单——现金不够时提前亮红灯，别等帮工散伙才发现
+    let distC = player.annexes.filter(a => a.card.annexName.includes("酒厂")).length;
+    let wageDue = Math.max(0, player.hand.length - distC) + (player.hand.length * (roundEffects.wageSurcharge || 0));
+    let handCountEl = document.getElementById('hand-count');
+    if (player.hand.length === 0) {
+        handCountEl.innerText = '0 张';
+        handCountEl.style.color = '';
+    } else if (player.cash < wageDue) {
+        handCountEl.innerText = `${player.hand.length} 张 · 明早工资 ${wageDue}F ⚠️现金不足，发不出工资的帮工会离开！`;
+        handCountEl.style.color = '#ef5350';
+    } else {
+        handCountEl.innerText = `${player.hand.length} 张 · 明早工资 ${wageDue}F`;
+        handCountEl.style.color = '';
+    }
     
     const annexesDiv = document.getElementById('player-annexes');
     annexesDiv.innerHTML = '';
