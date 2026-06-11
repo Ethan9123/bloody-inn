@@ -124,23 +124,25 @@ const CARNIE_TRAVELERS = [
     { name: "双胞胎 (Twins)", role: "carnie", color: "carnie-orange", rank: 2, buildRank: 1, loot: 24, annexName: "双人房 (Twin Room)", annexDesc: "特殊埋葬：必须埋在至少有 2 个空位的别馆下，埋葬后计为 2 具尸体（影响平局判定与告解室）。", aptitude: "bury", specialBurial: "twins" }
 ];
 
+// 名流模块（正版）：6 种不同卡 × 副本数 = 14 张，替换 14 张贵族
+// （结构经中文 PNP 印张逐格核对：酿酒师×4 / 蚕农×4 / 外科医生×3 / 药剂师×1 / 公证人×1 / 银行家×1；
+//  此前为补足 14 张自制的 8 张名流不存在于正版，已全部移除）
+function makeNotable(n) { return { ...n, role: "notable", color: "notable-gold", aptitude: "none" }; }
+const NOTABLE_DEFS = {
+    winemaker:     { name: "酿酒师 (Winemaker)", rank: 2, buildRank: 0, loot: 14, annexName: "酒桶 (Wine Cask)", annexDesc: "建造时，每有一间住着旅客的中立客房，获得 3F。" },
+    sericulturist: { name: "蚕农 (Sericulturist)", rank: 1, buildRank: 1, loot: 10, annexName: "丝绸农场 (Silk Farm)", annexDesc: "建造时，你每有一间住着旅客的自家客房，获得 3F（官方裁定：不含拖车）。" },
+    surgeon:       { name: "外科医生 (Surgeon)", rank: 1, buildRank: 2, loot: 16, annexName: "实验室 (Laboratory)", annexDesc: "清晨退房时，若对手有未埋尸体，你获得 3F。" },
+    pharmacist:    { name: "药剂师 (Pharmacist)", rank: 1, buildRank: 3, loot: 20, annexName: "药房 (Pharmacy)", annexDesc: "清晨退房时，若另一名玩家手中帮工不少于 3 张，获得 2F。" },
+    notary:        { name: "公证人 (Notary)", rank: 3, buildRank: 1, loot: 20, annexName: "书房 (Study)", annexDesc: "对手用现金兑支票时，你也可立即用 10F 兑 1 张支票（不占行动）。" },
+    banker:        { name: "银行家 (Banker)", rank: 1, buildRank: 3, loot: 20, annexName: "保险库 (Safe)", annexDesc: "被动：对手获得超过40F上限的现金时，溢出部分归你。" },
+};
 const NOTABLE_TRAVELERS = [
-    // 以下 6 张为正版扩展名流，数字经中文PNP卡面逐张核对
-    { name: "养蚕人 (Sericulturist)", role: "notable", color: "notable-gold", rank: 0, buildRank: 0, loot: 10, annexName: "丝绸农场 (Silk Farm)", annexDesc: "建造时，你每有一间住着旅客的自家客房，获得 3F。", aptitude: "none" },
-    { name: "酿酒庄主 (Winemaker)", role: "notable", color: "notable-gold", rank: 2, buildRank: 0, loot: 14, annexName: "酒桶 (Wine Cask)", annexDesc: "建造时，每有一间住着旅客的中立客房，获得 3F。", aptitude: "none" },
-    { name: "外科医生 (Surgeon)", role: "notable", color: "notable-gold", rank: 1, buildRank: 2, loot: 16, annexName: "实验室 (Laboratory)", annexDesc: "清晨退房时，若对手有未埋尸体，你获得 3F。", aptitude: "none" },
-    { name: "银行家 (Banker)", role: "notable", color: "notable-gold", rank: 1, buildRank: 3, loot: 20, annexName: "保险库 (Safe)", annexDesc: "被动：对手获得超过40F上限的现金时，溢出部分归你。", aptitude: "none" },
-    { name: "公证人 (Notary)", role: "notable", color: "notable-gold", rank: 3, buildRank: 1, loot: 20, annexName: "书房 (Study)", annexDesc: "对手洗钱/兑票时，你获得 1F。", aptitude: "none" },
-    { name: "药剂师 (Pharmacist)", role: "notable", color: "notable-gold", rank: 1, buildRank: 3, loot: 20, annexName: "药房 (Pharmacy)", annexDesc: "清晨退房时，若另一名玩家手中帮工不少于 3 张，获得 2F。", aptitude: "none" },
-    // 以下 8 张为本数字版自制名流（该中文PNP未收录其余名流），用于补足 14 张以替换贵族；效果均已实装
-    { name: "律师 (Lawyer)", role: "notable", color: "notable-gold", rank: 0, buildRank: 1, loot: 4, annexName: "档案室 (Archive)", annexDesc: "建造时获得 4F。", aptitude: "none" },
-    { name: "医生 (Doctor)", role: "notable", color: "notable-gold", rank: 1, buildRank: 1, loot: 6, annexName: "诊所 (Clinic)", annexDesc: "警察调查时，你可以少处理 1 具未埋尸体。", aptitude: "none" },
-    { name: "收藏家 (Collector)", role: "notable", color: "notable-gold", rank: 2, buildRank: 3, loot: 10, annexName: "画廊 (Gallery)", annexDesc: "游戏结束时，每有一种颜色别馆获得 2F。", aptitude: "none" },
-    { name: "铁路大亨 (Magnate)", role: "notable", color: "notable-gold", rank: 3, buildRank: 2, loot: 14, annexName: "马车站 (Coach House)", annexDesc: "建造时获得 6F。", aptitude: "none" },
-    { name: "贵妇 (Heiress)", role: "notable", color: "notable-gold", rank: 3, buildRank: 1, loot: 18, annexName: "珠宝室 (Jewelry Room)", annexDesc: "建造时获得 8F。", aptitude: "none" },
-    { name: "参议员 (Senator)", role: "notable", color: "notable-gold", rank: 3, buildRank: 3, loot: 15, annexName: "议事厅 (Council Room)", annexDesc: "游戏结束时，每张支票额外 2F。", aptitude: "none" },
-    { name: "法官 (Judge)", role: "notable", color: "notable-gold", rank: 2, buildRank: 2, loot: 9, annexName: "法庭 (Court)", annexDesc: "警察调查时，先获得 2F。", aptitude: "none" },
-    { name: "投机商 (Speculator)", role: "notable", color: "notable-gold", rank: 0, buildRank: 3, loot: 7, annexName: "交易所 (Exchange)", annexDesc: "建造时可立刻买 1 张支票。", aptitude: "none" }
+    ...Array(4).fill().map(() => makeNotable(NOTABLE_DEFS.winemaker)),
+    ...Array(4).fill().map(() => makeNotable(NOTABLE_DEFS.sericulturist)),
+    ...Array(3).fill().map(() => makeNotable(NOTABLE_DEFS.surgeon)),
+    makeNotable(NOTABLE_DEFS.pharmacist),
+    makeNotable(NOTABLE_DEFS.notary),
+    makeNotable(NOTABLE_DEFS.banker),
 ];
 
 const CARNIE_EVENTS = [
@@ -1502,16 +1504,6 @@ function triggerAnnexImmediateEffect(card) {
         let count = rooms.filter(r => r.key === 'neutral' && r.occupant).length;
         addPlayerCash(count * 3);
         logMessage("玩家", `酒桶根据中立住客获得 ${count * 3}F。`, "player");
-    } else if (card.annexName.includes("马车站")) {
-        addPlayerCash(6);
-    } else if (card.annexName.includes("珠宝室")) {
-        addPlayerCash(8);
-    } else if (card.annexName.includes("档案室")) {
-        addPlayerCash(4);
-    } else if (card.annexName.includes("交易所") && player.cash >= 10) {
-        player.cash -= 10;
-        player.checks += 1;
-        logMessage("玩家", "交易所立刻购买 1 张支票。", "player");
     } else if (card.annexName.includes("刀靶")) {
         // 飞刀手[刀靶]：建造时可对一名等级0旅客执行一次免费刺杀（不花帮工；尸体照常进未埋堆）
         let spots = allOccupiedSpots().filter(s => getCardRank(s.occupant, 'kill') === 0 && s.occupant.role !== 'police');
@@ -1856,6 +1848,7 @@ function adjustLaunder(type) {
             player.cash -= 10;
             player.checks += 1;
             logMessage("玩家", "你兑换了 10F 现金换取了 1 张 10F 支票。", "player");
+            studyFollowExchange('player'); // 名流[书房]：其他拥有者可跟随兑票
         } else {
             logMessage("系统", "现金不足 10F，无法购买支票！", "warn");
         }
@@ -2038,9 +2031,7 @@ function uncleAnnexImmediateEffect(self, card) {
     else if (card.annexName.includes("特大号床")) addUncleCash(self, 6);
     else if (card.annexName.includes("豪华餐厅")) addUncleCash(self, 9);
     else if (card.annexName.includes("凉亭")) addUncleCash(self, 18);
-    else if (card.annexName.includes("公园") || card.annexName.includes("马厩") || card.annexName.includes("杂货铺") || card.annexName.includes("主教区") || card.annexName.includes("铁锤游戏") || card.annexName.includes("档案室")) addUncleCash(self, 4);
-    else if (card.annexName.includes("马车站")) addUncleCash(self, 6);
-    else if (card.annexName.includes("珠宝室")) addUncleCash(self, 8);
+    else if (card.annexName.includes("公园") || card.annexName.includes("马厩") || card.annexName.includes("杂货铺") || card.annexName.includes("主教区") || card.annexName.includes("铁锤游戏")) addUncleCash(self, 4);
     else if (card.annexName.includes("客房服务")) {
         let room = rooms.find(r => isOpenRoom(r) && r.key === self.idx && !roomHasService(r))
             || rooms.find(r => isOpenRoom(r) && !roomHasService(r));
@@ -2055,9 +2046,6 @@ function uncleAnnexImmediateEffect(self, card) {
     }
     else if (card.annexName.includes("酒桶")) {
         addUncleCash(self, rooms.filter(r => r.key === 'neutral' && r.occupant).length * 3);
-    }
-    else if (card.annexName.includes("交易所") && self.cash >= 10) {
-        self.cash -= 10; self.checks += 1;
     }
     else if (card.annexName.includes("刀靶")) {
         // 飞刀手[刀靶]：建造时免费刺杀一名等级0旅客（尸体进叔叔的未埋堆）
@@ -2099,8 +2087,6 @@ function annexBuildValue(self, card) {
 
     // ── 终局支票加成：越早建、之后攒的每张支票越值钱 ──
     if (an.includes("温室")) v += (self.checks + R / 3) * 3 * 0.7;
-    if (an.includes("议事厅")) v += (self.checks + R / 3) * 2 * 0.7;
-    if (an.includes("画廊")) v += new Set(self.annexes.map(x => x.card.color)).size * 2 * 0.7;
 
     // ── 颜色协同：即时计数类 + 终局离店堆计数类（离店堆还会随轮数增长） ──
     const myColor = c => self.annexes.filter(a => a.card.color === c).length;
@@ -2117,9 +2103,8 @@ function annexBuildValue(self, card) {
     let instant = 0;
     if (an.includes("凉亭")) instant = 18;
     else if (an.includes("豪华餐厅")) instant = 9;
-    else if (an.includes("珠宝室")) instant = 8;
-    else if (an.includes("特大号床") || an.includes("马车站")) instant = 6;
-    else if (an.includes("豪华吊灯") || an.includes("铁锤游戏") || an.includes("档案室")) instant = 4;
+    else if (an.includes("特大号床")) instant = 6;
+    else if (an.includes("豪华吊灯") || an.includes("铁锤游戏")) instant = 4;
     v += instant * 0.9;
     if (an.includes("厢房") && rooms.some(r => r.key === 'neutral')) v += 1.5 * R * 0.5; // 多一间房=每轮多租金/猎物
     if (an.includes("丝绸农场")) v += rooms.filter(r => r.key === self.idx && r.occupant).length * 3 * 0.9;
@@ -2316,8 +2301,8 @@ function aiStrategicAction(self) {
     // G) 兜底：跳过（真规则：没有"白拿支票"这种行动——洗钱只是现金换支票）
     plans.push({ type: 'pass', score: 1 });
     // H) 现金接近上限就洗钱落袋（阈值随性格不同；现金不足 10F 洗不了）
-    //    长线协同：建了[温室]/[议事厅]后每张支票终局更值钱 → 更早、更勤地洗钱
-    let checkBonusAnnexes = uncleDiscount(self, ["温室", "议事厅"]);
+    //    长线协同：建了[温室]后每张支票终局更值钱 → 更早、更勤地洗钱
+    let checkBonusAnnexes = uncleDiscount(self, ["温室"]);
     let effLaunderAt = Math.max(12, prof.launderAt - 5 * checkBonusAnnexes);
     if (self.cash >= 36) plans.push({ type: 'launder', score: 100 });
     else if (self.cash >= effLaunderAt) plans.push({ type: 'launder', score: 9 + checkBonusAnnexes * 3 });
@@ -2404,7 +2389,7 @@ function aiStrategicAction(self) {
         uncleAnnexImmediateEffect(self, plan.card);
         // 长线台词：前期建引擎建筑时说出规划意图（让人感觉它"知道前期建什么"）
         let an = plan.card.annexName || '';
-        let isEngine = ["花园", "客房服务", "酒厂", "熊笼", "会客厅", "车间", "酒窖", "温室", "议事厅"].some(k => an.includes(k));
+        let isEngine = ["花园", "客房服务", "酒厂", "熊笼", "会客厅", "车间", "酒窖", "温室"].some(k => an.includes(k));
         let buildSyn = '';
         if (isEngine && getRoundPhase() !== 'late' && Math.random() < 0.6) {
             if (an.includes("熊笼")) buildSyn = '（往后每一刀都省一名帮工——接下来就该多动刀了）';
@@ -2413,7 +2398,7 @@ function aiStrategicAction(self) {
             else if (an.includes("酒窖")) buildSyn = '（埋人省帮工——尸体再多也不怕了）';
             else if (an.includes("花园") || an.includes("客房服务")) buildSyn = '（每一轮都进账，越早建越赚）';
             else if (an.includes("酒厂")) buildSyn = '（工资省下来，养得起更多人手）';
-            else if (an.includes("温室") || an.includes("议事厅")) buildSyn = '（之后每张支票都更值钱，得勤洗钱了）';
+            else if (an.includes("温室")) buildSyn = '（之后每张支票都更值钱，得勤洗钱了）';
         }
         aiThink(self, `${self.name}${payLine(pay)}把手里的 ${plan.card.name} 改建成了 [${plan.card.annexName}]。${buildSyn}`);
         uncleSay(self, 'build');
@@ -2429,7 +2414,7 @@ function aiStrategicAction(self) {
         self.checks += 1;
         aiThink(self, `现金攒得差不多了，${self.name}把 10F 洗成支票存好，落袋为安。`);
         playEffect('launder', '', anchor('uncle-box-' + self.idx) || document.querySelector('.ai-wealth-box'));
-        triggerNotaryStudy(self);
+        studyFollowExchange(self); // 名流[书房]：其他拥有者可跟随兑票
     } else {
         aiThink(self, `${self.name}扫了一眼大堂，决定这次按兵不动。`);
     }
@@ -2448,13 +2433,24 @@ function uncleConsumeObject(self, effect) {
     return o;
 }
 
-// 名流[书房/公证人]：对手（AI 叔叔）洗钱或兑换支票时，你每座书房获得 1F（原版：仅在他人回合触发）
-function triggerNotaryStudy(uncle) {
-    let notaryCount = player.annexes.filter(a => a.card.annexName.includes("书房")).length;
-    if (notaryCount > 0) {
-        addPlayerCash(notaryCount);
-        logMessage("玩家", `[书房] ${uncle.name}动了支票，你顺势抽成 ${notaryCount}F。`, "player");
+// 名流[书房/公证人]（正版效果）：其他玩家用现金兑支票时，书房拥有者可立即也用 10F 兑 1 张支票（不占行动）
+function studyFollowExchange(exchanger) {
+    // 玩家拥有书房、且这次兑票的人不是玩家
+    if (exchanger !== 'player' && player.annexes.some(a => a.card.annexName.includes("书房")) && player.cash >= 10) {
+        player.cash -= 10;
+        player.checks += 1;
+        logMessage("玩家", `[书房] ${exchanger.name}兑了支票——你跟着免费兑换：10F 现金 → 1 张支票。`, "player");
+        playEffect('launder', '', document.querySelector('.player-wealth-box'));
     }
+    // 某个叔叔拥有书房、且兑票的人不是他
+    aiUncles.forEach(u => {
+        if (u === exchanger) return;
+        if ((u.annexes || []).some(a => a.card.annexName.includes("书房")) && u.cash >= 10) {
+            u.cash -= 10;
+            u.checks += 1;
+            logMessage("AI", `${u.name}的[书房]生效：跟着把 10F 现金兑成了支票。`, "ai");
+        }
+    });
 }
 
 // ==========================================
@@ -2481,17 +2477,8 @@ function morningStepPolice() {
         logMessage("警察", "🚓 警察在大堂展开调查！发现未掩埋的尸体...", "police");
         playEffect('police');
 
-        // 名流[法庭/法官]：调查时先获得 2F
-        let judgeCount = player.annexes.filter(a => a.card.annexName.includes("法庭")).length;
-        if (judgeCount > 0) {
-            addPlayerCash(2 * judgeCount);
-            logMessage("玩家", `[法庭] 警察调查时你先获得 ${2 * judgeCount}F。`, "player");
-        }
-        // 名流[诊所/医生]：每座诊所让你少处理 1 具未埋尸体（该尸体不被罚款也不被带走）
-        let doctorCount = player.annexes.filter(a => a.card.annexName.includes("诊所")).length;
-
         if (player.corpses.length > 0) {
-            let protectedCount = Math.min((roundEffects.protectedCorpses || 0) + doctorCount, player.corpses.length);
+            let protectedCount = Math.min(roundEffects.protectedCorpses || 0, player.corpses.length);
             let exposedCount = player.corpses.length - protectedCount;
             let penalty = exposedCount * 10;
             logMessage("警察", `您被搜出 ${exposedCount} 具尸体！需要支付 ${penalty}F 遣散费给掘墓人。`, "warn");
@@ -2510,7 +2497,7 @@ function morningStepPolice() {
             player.corpses.slice(protectedCount).forEach(c => removedStack.push(c));
             player.corpses = protectedCorpses;
             if (protectedCount > 0) {
-                logMessage("玩家", `${protectedCount} 具尸体受诊所/道具保护，留在未埋尸体堆中。`, "player");
+                logMessage("玩家", `${protectedCount} 具尸体受道具保护，留在未埋尸体堆中。`, "player");
             }
         } else {
             logMessage("玩家", "您名下没有未埋的尸体，治安官查无实据。", "player");
@@ -2824,22 +2811,6 @@ function triggerGameOver() {
         logMessage("玩家", `别馆 [温室] 在局终为你每张支票加成 3F，共获得额外 ${bonus}F 赃款！`, "player");
     }
 
-    // 名流[议事厅/参议员]：局终每张支票额外 2F
-    let senatorCount = player.annexes.filter(a => a.card.annexName.includes("议事厅")).length;
-    if (senatorCount > 0) {
-        let bonus = player.checks * 2 * senatorCount;
-        playerTotal += bonus;
-        logMessage("玩家", `别馆 [议事厅] 局终为你每张支票额外加成 2F，共 ${bonus}F！`, "player");
-    }
-    // 名流[画廊/收藏家]：局终每有一种颜色的别馆获得 2F
-    let galleryCount = player.annexes.filter(a => a.card.annexName.includes("画廊")).length;
-    if (galleryCount > 0) {
-        let distinctColors = new Set(player.annexes.map(a => a.card.color)).size;
-        let bonus = distinctColors * 2 * galleryCount;
-        playerTotal += bonus;
-        logMessage("玩家", `别馆 [画廊] 局终：你拥有 ${distinctColors} 种颜色的别馆，获得额外 ${bonus}F！`, "player");
-    }
-
     let colorCounts = { 'artisan-red': 0, 'merchant-blue': 0, 'religious-purple': 0, 'noble-green': 0 };
     exitStack.forEach(c => {
         if (colorCounts[c.color] !== undefined) colorCounts[c.color]++;
@@ -2875,8 +2846,6 @@ function triggerGameOver() {
         (u.annexes || []).forEach(a => {
             let an = a.card.annexName || '';
             if (an.includes("温室")) t += u.checks * 3;
-            if (an.includes("议事厅")) t += u.checks * 2;
-            if (an.includes("画廊")) t += new Set(u.annexes.map(x => x.card.color)).size * 2;
             if (an.includes("公园")) t += colorCounts['artisan-red'] * 4;
             if (an.includes("杂货铺")) t += colorCounts['merchant-blue'] * 4;
             if (an.includes("主教区")) t += colorCounts['religious-purple'] * 4;
