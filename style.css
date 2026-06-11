@@ -2199,3 +2199,28 @@ body {
     }
 }
 
+
+/* ★ 自制扩展「镇上的新面孔」：同人角标与设置按钮 */
+.fan-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 3;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #1a1a1a;
+    background: linear-gradient(135deg, #ffd54f, #ffb300);
+    border-radius: 3px;
+    padding: 1px 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    pointer-events: none;
+}
+.btn-fan {
+    border-style: dashed !important;
+    border-color: #ffb300 !important;
+}
+.btn-fan.active {
+    background: rgba(255, 179, 0, 0.18) !important;
+    color: #ffd54f !important;
+}

@@ -145,6 +145,21 @@ const NOTABLE_TRAVELERS = [
     makeNotable(NOTABLE_DEFS.banker),
 ];
 
+// ★ 自制扩展「镇上的新面孔」（非官方同人内容）★
+// 8 张本数字版原创名流——曾被误当作正版名流，现作为明确标注的可选模块保留。
+// 默认关闭；开启后直接加入牌堆（不替换任何官方卡）。卡面显示"同人"角标。
+function makeFanNotable(n) { return { ...n, role: "notable", color: "notable-gold", aptitude: "none", fanMade: true, annexDesc: "【自制】" + n.annexDesc }; }
+const FAN_NOTABLES = [
+    { name: "律师 (Lawyer)", rank: 0, buildRank: 1, loot: 4, annexName: "档案室 (Archive)", annexDesc: "建造时获得 4F。" },
+    { name: "医生 (Doctor)", rank: 1, buildRank: 1, loot: 6, annexName: "诊所 (Clinic)", annexDesc: "警察调查时，你可以少处理 1 具未埋尸体。" },
+    { name: "收藏家 (Collector)", rank: 2, buildRank: 3, loot: 10, annexName: "画廊 (Gallery)", annexDesc: "游戏结束时，每有一种颜色别馆获得 2F。" },
+    { name: "铁路大亨 (Magnate)", rank: 3, buildRank: 2, loot: 14, annexName: "马车站 (Coach House)", annexDesc: "建造时获得 6F。" },
+    { name: "贵妇 (Heiress)", rank: 3, buildRank: 1, loot: 18, annexName: "珠宝室 (Jewelry Room)", annexDesc: "建造时获得 8F。" },
+    { name: "参议员 (Senator)", rank: 3, buildRank: 3, loot: 15, annexName: "议事厅 (Council Room)", annexDesc: "游戏结束时，每张支票额外 2F。" },
+    { name: "法官 (Judge)", rank: 2, buildRank: 2, loot: 9, annexName: "法庭 (Court)", annexDesc: "警察调查时，先获得 2F。" },
+    { name: "投机商 (Speculator)", rank: 0, buildRank: 3, loot: 7, annexName: "交易所 (Exchange)", annexDesc: "建造时可立刻用 10F 买 1 张支票。" }
+].map(makeFanNotable);
+
 const CARNIE_EVENTS = [
     { id: "blackmail", name: "勒索 (Blackmail)", desc: "清晨无论是否有警察，都按警察调查处理未埋尸体。" },
     { id: "broken_safe", name: "破保险箱 (Broken Safe)", desc: "清晨每名玩家失去一半支票，向上取整。" },
@@ -184,6 +199,7 @@ let expansionOptions = {
     carnies: false,
     carnieEvents: false,
     notables: false,
+    fanNotables: false,   // ★自制扩展「镇上的新面孔」：8 张同人名流，直接加入牌堆（非官方）
     objects: false,
     sound: true
 };
@@ -535,6 +551,7 @@ function toggleExpansion(option) {
     document.getElementById('btn-exp-carnies')?.classList.toggle('active', expansionOptions.carnies);
     document.getElementById('btn-exp-events')?.classList.toggle('active', expansionOptions.carnieEvents);
     document.getElementById('btn-exp-notables')?.classList.toggle('active', expansionOptions.notables);
+    document.getElementById('btn-exp-fan')?.classList.toggle('active', expansionOptions.fanNotables);
     document.getElementById('btn-exp-objects')?.classList.toggle('active', expansionOptions.objects);
     document.getElementById('btn-sound')?.classList.toggle('active', expansionOptions.sound);
 }
@@ -548,6 +565,10 @@ function startGame() {
     }
     if (expansionOptions.carnies) {
         allTravelers.push(...JSON.parse(JSON.stringify(CARNIE_TRAVELERS)));
+    }
+    if (expansionOptions.fanNotables) {
+        // ★自制扩展：8 张同人名流直接加入牌堆（不替换任何官方卡，明确标注非官方）
+        allTravelers.push(...JSON.parse(JSON.stringify(FAN_NOTABLES)));
     }
     allTravelers.forEach((c, idx) => c.id = 'trav_' + idx + '_' + Math.random().toString(36).substr(2, 5));
     shuffleCards(allTravelers);
@@ -640,6 +661,7 @@ function startGame() {
     if (expansionOptions.carnies) enabledModules.push('嘉年华员工');
     if (expansionOptions.carnieEvents) enabledModules.push('事件牌');
     if (expansionOptions.notables) enabledModules.push('名流替换贵族');
+    if (expansionOptions.fanNotables) enabledModules.push('★自制·镇上的新面孔(同人)');
     if (expansionOptions.objects) enabledModules.push('姑妈道具');
     logMessage("系统", `本局扩展：${enabledModules.length ? enabledModules.join('、') : '未加入扩展'}。`, "system");
     
@@ -1504,6 +1526,20 @@ function triggerAnnexImmediateEffect(card) {
         let count = rooms.filter(r => r.key === 'neutral' && r.occupant).length;
         addPlayerCash(count * 3);
         logMessage("玩家", `酒桶根据中立住客获得 ${count * 3}F。`, "player");
+    } else if (card.annexName.includes("马车站")) {
+        addPlayerCash(6);
+        logMessage("玩家", "【自制】马车站建成，立刻获得 6F。", "player");
+    } else if (card.annexName.includes("珠宝室")) {
+        addPlayerCash(8);
+        logMessage("玩家", "【自制】珠宝室建成，立刻获得 8F。", "player");
+    } else if (card.annexName.includes("档案室")) {
+        addPlayerCash(4);
+        logMessage("玩家", "【自制】档案室建成，立刻获得 4F。", "player");
+    } else if (card.annexName.includes("交易所") && player.cash >= 10) {
+        player.cash -= 10;
+        player.checks += 1;
+        logMessage("玩家", "【自制】交易所建成，立刻用 10F 买入 1 张支票。", "player");
+        studyFollowExchange('player'); // 兑票动作：触发[书房]跟随
     } else if (card.annexName.includes("刀靶")) {
         // 飞刀手[刀靶]：建造时可对一名等级0旅客执行一次免费刺杀（不花帮工；尸体照常进未埋堆）
         let spots = allOccupiedSpots().filter(s => getCardRank(s.occupant, 'kill') === 0 && s.occupant.role !== 'police');
@@ -2031,7 +2067,13 @@ function uncleAnnexImmediateEffect(self, card) {
     else if (card.annexName.includes("特大号床")) addUncleCash(self, 6);
     else if (card.annexName.includes("豪华餐厅")) addUncleCash(self, 9);
     else if (card.annexName.includes("凉亭")) addUncleCash(self, 18);
-    else if (card.annexName.includes("公园") || card.annexName.includes("马厩") || card.annexName.includes("杂货铺") || card.annexName.includes("主教区") || card.annexName.includes("铁锤游戏")) addUncleCash(self, 4);
+    else if (card.annexName.includes("公园") || card.annexName.includes("马厩") || card.annexName.includes("杂货铺") || card.annexName.includes("主教区") || card.annexName.includes("铁锤游戏") || card.annexName.includes("档案室")) addUncleCash(self, 4);
+    else if (card.annexName.includes("马车站")) addUncleCash(self, 6);
+    else if (card.annexName.includes("珠宝室")) addUncleCash(self, 8);
+    else if (card.annexName.includes("交易所") && self.cash >= 10) {
+        self.cash -= 10; self.checks += 1;
+        studyFollowExchange(self); // 兑票动作：触发[书房]跟随
+    }
     else if (card.annexName.includes("客房服务")) {
         let room = rooms.find(r => isOpenRoom(r) && r.key === self.idx && !roomHasService(r))
             || rooms.find(r => isOpenRoom(r) && !roomHasService(r));
@@ -2103,8 +2145,11 @@ function annexBuildValue(self, card) {
     let instant = 0;
     if (an.includes("凉亭")) instant = 18;
     else if (an.includes("豪华餐厅")) instant = 9;
-    else if (an.includes("特大号床")) instant = 6;
-    else if (an.includes("豪华吊灯") || an.includes("铁锤游戏")) instant = 4;
+    else if (an.includes("珠宝室")) instant = 8;
+    else if (an.includes("特大号床") || an.includes("马车站")) instant = 6;
+    else if (an.includes("豪华吊灯") || an.includes("铁锤游戏") || an.includes("档案室")) instant = 4;
+    if (an.includes("议事厅")) v += (self.checks + R / 3) * 2 * 0.7;
+    if (an.includes("画廊")) v += new Set(self.annexes.map(x => x.card.color)).size * 2 * 0.7;
     v += instant * 0.9;
     if (an.includes("厢房") && rooms.some(r => r.key === 'neutral')) v += 1.5 * R * 0.5; // 多一间房=每轮多租金/猎物
     if (an.includes("丝绸农场")) v += rooms.filter(r => r.key === self.idx && r.occupant).length * 3 * 0.9;
@@ -2301,8 +2346,8 @@ function aiStrategicAction(self) {
     // G) 兜底：跳过（真规则：没有"白拿支票"这种行动——洗钱只是现金换支票）
     plans.push({ type: 'pass', score: 1 });
     // H) 现金接近上限就洗钱落袋（阈值随性格不同；现金不足 10F 洗不了）
-    //    长线协同：建了[温室]后每张支票终局更值钱 → 更早、更勤地洗钱
-    let checkBonusAnnexes = uncleDiscount(self, ["温室"]);
+    //    长线协同：建了[温室]（或自制[议事厅]）后每张支票终局更值钱 → 更早、更勤地洗钱
+    let checkBonusAnnexes = uncleDiscount(self, ["温室", "议事厅"]);
     let effLaunderAt = Math.max(12, prof.launderAt - 5 * checkBonusAnnexes);
     if (self.cash >= 36) plans.push({ type: 'launder', score: 100 });
     else if (self.cash >= effLaunderAt) plans.push({ type: 'launder', score: 9 + checkBonusAnnexes * 3 });
@@ -2477,8 +2522,16 @@ function morningStepPolice() {
         logMessage("警察", "🚓 警察在大堂展开调查！发现未掩埋的尸体...", "police");
         playEffect('police');
 
+        // 【自制】[法庭]：调查时先获得 2F；[诊所]：每座让你少处理 1 具未埋尸体
+        let judgeCount = player.annexes.filter(a => a.card.annexName.includes("法庭")).length;
+        if (judgeCount > 0) {
+            addPlayerCash(2 * judgeCount);
+            logMessage("玩家", `【自制】[法庭] 警察调查时你先获得 ${2 * judgeCount}F。`, "player");
+        }
+        let doctorCount = player.annexes.filter(a => a.card.annexName.includes("诊所")).length;
+
         if (player.corpses.length > 0) {
-            let protectedCount = Math.min(roundEffects.protectedCorpses || 0, player.corpses.length);
+            let protectedCount = Math.min((roundEffects.protectedCorpses || 0) + doctorCount, player.corpses.length);
             let exposedCount = player.corpses.length - protectedCount;
             let penalty = exposedCount * 10;
             logMessage("警察", `您被搜出 ${exposedCount} 具尸体！需要支付 ${penalty}F 遣散费给掘墓人。`, "warn");
@@ -2504,6 +2557,12 @@ function morningStepPolice() {
         }
         
         aiUncles.forEach(u => {
+            // 【自制】[法庭]：叔叔拥有时调查同样先获得 2F（与玩家对称）
+            let uJudge = (u.annexes || []).filter(a => a.card.annexName.includes("法庭")).length;
+            if (uJudge > 0) {
+                addUncleCash(u, 2 * uJudge);
+                logMessage("AI", `【自制】${u.name}的[法庭]在调查时先收 ${2 * uJudge}F。`, "ai");
+            }
             if (u.corpses.length === 0) return;
             // 道具自保：[水井/诊所类]先处理掉一具；[雪堆]再让一具免于本轮罚款
             if (uncleConsumeObject(u, 'remove_corpse')) {
@@ -2511,6 +2570,8 @@ function morningStepPolice() {
             }
             let protectedN = 0;
             if (u.corpses.length > 0 && uncleConsumeObject(u, 'hide_corpse')) protectedN = 1;
+            // 【自制】[诊所]：叔叔的诊所同样每座保护 1 具（与玩家对称）
+            protectedN = Math.min(protectedN + (u.annexes || []).filter(a => a.card.annexName.includes("诊所")).length, u.corpses.length);
             let exposed = u.corpses.length - protectedN;
             if (exposed <= 0) {
                 if (u.corpses.length > 0) logMessage("AI", `${u.name}的尸体被道具藏住了，治安官一无所获。`, "ai");
@@ -2811,6 +2872,21 @@ function triggerGameOver() {
         logMessage("玩家", `别馆 [温室] 在局终为你每张支票加成 3F，共获得额外 ${bonus}F 赃款！`, "player");
     }
 
+    // 【自制】[议事厅]：局终每张支票额外 2F；[画廊]：每种颜色别馆 2F
+    let senatorCount = player.annexes.filter(a => a.card.annexName.includes("议事厅")).length;
+    if (senatorCount > 0) {
+        let bonus = player.checks * 2 * senatorCount;
+        playerTotal += bonus;
+        logMessage("玩家", `【自制】[议事厅] 局终每张支票额外加成 2F，共 ${bonus}F！`, "player");
+    }
+    let galleryCount = player.annexes.filter(a => a.card.annexName.includes("画廊")).length;
+    if (galleryCount > 0) {
+        let distinctColors = new Set(player.annexes.map(a => a.card.color)).size;
+        let bonus = distinctColors * 2 * galleryCount;
+        playerTotal += bonus;
+        logMessage("玩家", `【自制】[画廊] 局终：你拥有 ${distinctColors} 种颜色的别馆，获得额外 ${bonus}F！`, "player");
+    }
+
     let colorCounts = { 'artisan-red': 0, 'merchant-blue': 0, 'religious-purple': 0, 'noble-green': 0 };
     exitStack.forEach(c => {
         if (colorCounts[c.color] !== undefined) colorCounts[c.color]++;
@@ -2846,6 +2922,8 @@ function triggerGameOver() {
         (u.annexes || []).forEach(a => {
             let an = a.card.annexName || '';
             if (an.includes("温室")) t += u.checks * 3;
+            if (an.includes("议事厅")) t += u.checks * 2;
+            if (an.includes("画廊")) t += new Set(u.annexes.map(x => x.card.color)).size * 2;
             if (an.includes("公园")) t += colorCounts['artisan-red'] * 4;
             if (an.includes("杂货铺")) t += colorCounts['merchant-blue'] * 4;
             if (an.includes("主教区")) t += colorCounts['religious-purple'] * 4;
@@ -3433,7 +3511,8 @@ function cardImgKey(card) {
 }
 function cardArtHTML(card) {
     return `<img class="card-art" src="cards/${cardImgKey(card)}.png" alt="" loading="lazy" onerror="this.remove()">` +
-           `<div class="card-emblem">${getRoleEmblem(card.role)}</div>`;
+           `<div class="card-emblem">${getRoleEmblem(card.role)}</div>` +
+           (card.fanMade ? `<div class="fan-badge" title="非官方同人卡（本数字版自制扩展）">同人</div>` : '');
 }
 
 // ==========================================

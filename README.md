@@ -34,6 +34,7 @@ A built-in **interactive tutorial** (on the setup screen) walks new players thro
 
 ### Features
 - Faithful base game + 3 expansion modules (Carnies, Notables, Aunt Ginette's Objects, Carnie Events), card counts & effects checked against the rulebook and the PNP.
+- **Optional fan-made module** "New Faces in Town" (clearly marked **unofficial**, off by default): 8 original notables designed for this digital edition; they carry a "同人/fan" badge and never replace official cards.
 - **2–4 players**: you + **1/2/3 AI uncles**, your seat **randomized**, and each AI's difficulty picked **independently**.
 - **5 AI difficulties** (Silly / Scheming / Murderous / **Mastermind (human-like)** / **ML-tuned**) — each uses one phase-aware strategy engine that robs high-value guests for cash, denies your rooms, expands early, and banks winnings late, narrating its reasoning.
 - **中文 / English** toggle (card names + tooltips).
@@ -69,6 +70,7 @@ python -m http.server 4173    # → http://localhost:4173
 
 ### 功能
 - 还原基础游戏 + 3 个扩展模块（嘉年华员工 / 名流 / 姑妈道具 / 嘉年华事件），卡牌数量与效果对照规则书及 PNP 卡面逐张核对。
+- **可选自制模块**「镇上的新面孔」（**明确标注非官方**，默认关闭）：本数字版原创的 8 张名流，卡面带「同人」角标，加入牌堆但不替换任何官方卡。
 - **2~4 人对局**：你 + **1/2/3 个 AI 叔叔**，你的**座位随机**，每个 AI 的难度可**单独选择**。
 - **5 档 AI 难度**（傻 / 阴险 / 嗜血 / **策略（真人级）** / **学习（ML调优）**）—— 同一套「分阶段」策略引擎：抢劫肥羊换现金、专断你房间财路、早期扩张地盘、后期洗钱落袋，并全程"思考"旁白。
 - **中文 / English** 一键切换（卡名 + 悬浮提示）。

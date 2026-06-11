@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <!-- 引入Lucide图标 -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="style.css?v=7">
+    <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
     <div id="setup-screen" class="screen">
@@ -49,8 +49,9 @@
                     <div class="btn-toggle-group expansion-grid">
                         <button id="btn-exp-carnies" class="btn btn-toggle" onclick="toggleExpansion('carnies')" title="加入 14 张橙色嘉年华员工旅客（拖车、特殊埋葬等机制）">嘉年华员工</button>
                         <button id="btn-exp-events" class="btn btn-toggle" onclick="toggleExpansion('carnieEvents')" title="当嘉年华旅客在场时翻开事件牌（勒索、旺季、扒手等一次性效果）">嘉年华事件</button>
-                        <button id="btn-exp-notables" class="btn btn-toggle" onclick="toggleExpansion('notables')" title="用 14 张金色名流替换原绿色贵族，带来更复杂的别馆能力">名流替换贵族</button>
+                        <button id="btn-exp-notables" class="btn btn-toggle" onclick="toggleExpansion('notables')" title="官方名流模块：6 种金色名流（共14张）替换原绿色贵族，带来非对称等级与强力被动">名流替换贵族</button>
                         <button id="btn-exp-objects" class="btn btn-toggle" onclick="toggleExpansion('objects')" title="开局获得 3 张姑妈道具（毒药、石灰、地毯等），起始现金提高到 10F">姑妈道具</button>
+                        <button id="btn-exp-fan" class="btn btn-toggle btn-fan" onclick="toggleExpansion('fanNotables')" title="⚠️ 非官方同人内容：本数字版原创的 8 张名流（律师/医生/收藏家/铁路大亨/贵妇/参议员/法官/投机商），直接加入牌堆，不替换任何官方卡。卡面带「同人」角标。">★自制·镇上的新面孔</button>
                     </div>
                     <p class="setup-hint">悬停查看每个扩展的说明。牌堆按原版规则移除：人数越多牌堆越大；开扩展时总牌数相应增加。</p>
                 </div>
@@ -414,6 +415,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=14"></script>
+    <script src="script.js?v=15"></script>
 </body>
 </html>
