@@ -30,3 +30,6 @@ ml/results.jsonl
 # 本地工作文件：从版权规则书 PDF 提取的文本（仅本地核对用，不公开）
 _rules_extract.txt
 _base_rules.txt
+
+# 离线整合包构建目录与产物（含版权图片，仅本地/私下分享，不入库）
+dist_offline/
