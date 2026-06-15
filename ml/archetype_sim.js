@@ -95,6 +95,10 @@ function makeBaseDeck() {
   push('green', 2, 9, 'diningRoom', 3); push('green', 3, 18, 'pavilion', 1); push('green', 3, 4, 'stables', 1); push('green', 3, 1, 'greenhouse', 1);
   // police 灰（刺杀特长；无别馆；查夜威胁）
   push('police', 0, 1, null, 4); push('police', 1, 1, null, 4); push('police', 2, 1, null, 3); push('police', 3, 1, null, 3);
+  // ★真实油水（经 PNP 逐张读图核实）：基础版口袋油水是纯等级函数，全派系通用——
+  //   0级=8F 1级=12F 2级=18F 3级=26F。贵族的 4/6/9/18 是「别馆建造奖励」(annex.cash)，与油水无关。
+  const LADDER = { 0: 8, 1: 12, 2: 18, 3: 26 };
+  d.forEach(c => { c.loot = LADDER[c.rank]; });
   return d;
 }
 function makeNotables() { // 14 = 替换贵族
@@ -560,7 +564,6 @@ const scenarios = [
   ['+ 嘉年华员工', { carnies: true }],
   ['+ 姑妈道具', { objects: true }],
   ['全扩展（名流+嘉年华+道具）', { notables: true, carnies: true, objects: true }],
-  ['【平衡实验】基础版·提高普通旅客油水', { richLoot: true }],
 ];
 const summary = [];
 for (const [label, opts] of scenarios) {
