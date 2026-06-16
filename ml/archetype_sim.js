@@ -138,6 +138,8 @@ function newPlayer(arch, idx) {
     rooms: 1,                 // 拥有客房数
     objects: [],              // 道具(简化：{effect})
     buriedCount: 0,
+    _builds: [],              // 探针：本局建过的别馆key
+    _objUses: [],             // 探针：本局用过的道具
   };
 }
 function annexCap(a) { const def = A[a.key]; return (def.trailer ? 1 : 2); } // 简化：普通别馆2坑、拖车1坑
@@ -335,6 +337,7 @@ function execute(p, plan, st) {
     case 'build': {
       payHelpers(p, 'build', plan.cost, st);
       const ci = p.hand.indexOf(plan.card); if (ci >= 0) p.hand.splice(ci, 1);
+      p._builds.push(plan.card.annex);
       const a = { key: plan.card.annex, buried: [] }; p.annexes.push(a);
       const def = A[plan.card.annex];
       if (def.cash) addCash(p, def.cash);
@@ -345,8 +348,8 @@ function execute(p, plan, st) {
     }
     case 'claim': { st.neutralRooms--; p.rooms++; break; }
     case 'svc': { p.svc = (p.svc || 0) + 1; break; }
-    case 'objKill': { const i = p.objects.indexOf('freeKill'); p.objects.splice(i, 1); const r = plan.tgt; if (r.occ) { p.corpses.push(r.occ); r.occ = null; } break; }
-    case 'objBury': { const i = p.objects.indexOf('freeBury'); p.objects.splice(i, 1); const c = p.corpses.shift(); if (c) { addCash(p, c.loot); p.buriedCount++; } break; }
+    case 'objKill': { const i = p.objects.indexOf('freeKill'); p.objects.splice(i, 1); p._objUses.push('freeKill'); const r = plan.tgt; if (r.occ) { p.corpses.push(r.occ); r.occ = null; } break; }
+    case 'objBury': { const i = p.objects.indexOf('freeBury'); p.objects.splice(i, 1); p._objUses.push('freeBury'); const c = p.corpses.shift(); if (c) { addCash(p, c.loot); p.buriedCount++; } break; }
     case 'launder': { if (p.cash >= 10) { p.cash -= 10; p.checks++; } break; }
     case 'pass': default: break;
   }
@@ -472,7 +475,7 @@ function playGame(archs, opts) {
   }
   const scores = players.map((p, i) => ({ arch: p.arch, total: total(p), buried: p.buriedCount }));
   scores.sort((a, b) => b.total - a.total || b.buried - a.buried);
-  if (TRACE) lastPlayers = players;
+  lastPlayers = players; // 探针：始终暴露本局玩家对象（供 study 模式聚合）
   return scores;
 }
 function deduct(p, amt) { while (amt >= 10 && p.checks > 0) { p.checks--; amt -= 10; } p.cash = Math.max(0, p.cash - amt); }
@@ -548,6 +551,45 @@ if (process.argv.includes('trace')) {
     console.log(`  5局动作累计：`);
     for (const a of opp) console.log(`   ${ARCH[a].name}: ${JSON.stringify(sumActs[a])}`);
   }
+  process.exit(0);
+}
+
+// ---------- 搭配研究模式：名流+道具，统计各流派实际建造的别馆与胜负关联 ----------
+if (process.argv.includes('study')) {
+  srand(77);
+  const opts = { notables: true, objects: true };
+  const N = parseInt(process.argv[3] || '4000', 10);
+  // 4人混桌
+  const built = {};   // built[arch][annex] = {games建过该馆的局数, wins建过且夺冠}
+  const annexGlobal = {}; // annexGlobal[annex] = {built, byWinner}
+  ARCH_KEYS.forEach(a => built[a] = {});
+  for (let g = 0; g < N; g++) {
+    const pool = shuffle(ARCH_KEYS.slice()).slice(0, 4);
+    const sc = playGame(pool, opts);
+    const winner = sc[0].arch;
+    for (const pr of lastPlayers) {
+      const uniq = [...new Set(pr._builds)];
+      for (const k of uniq) {
+        (built[pr.arch][k] = built[pr.arch][k] || { g: 0, w: 0 });
+        built[pr.arch][k].g++; if (pr.arch === winner) built[pr.arch][k].w++;
+        (annexGlobal[k] = annexGlobal[k] || { built: 0, byWinner: 0 });
+        annexGlobal[k].built++; if (pr.arch === winner) annexGlobal[k].byWinner++;
+      }
+    }
+  }
+  const NAME = { vegGarden: '菜园', workshop: '车间', distillery: '酒厂', gardens: '花园', park: '公园', butchers: '肉铺', kiosk: '报摊', parlour: '会客厅', roomSvc: '客房服务', brewery: '啤酒厂', store: '商铺', grocery: '杂货铺', altar: '祭坛', cellar: '酒窖', chapel: '小教堂', room: '厢房', crypt: '地下墓室', bishopric: '主教区', silkFarm: '丝绸农场', wineCask: '酒桶', laboratory: '实验室', safe: '保险库', study: '书房', pharmacy: '药房' };
+  const nm = k => NAME[k] || k;
+  console.log('血腥旅馆 · 名流+道具 搭配研究（4人混桌，' + N + '局）');
+  console.log('（每个流派最常建的别馆 Top + 建造该馆时的夺冠率；★=名流别馆）\n');
+  const notableAnnex = new Set(['silkFarm', 'wineCask', 'laboratory', 'safe', 'study', 'pharmacy']);
+  for (const a of ARCH_KEYS) {
+    const list = Object.entries(built[a]).map(([k, v]) => ({ k, g: v.g, wr: v.w / Math.max(1, v.g) })).sort((x, y) => y.g - x.g).slice(0, 6);
+    const total = Object.values(built[a]).reduce((s, v) => s + v.g, 0);
+    console.log(`【${ARCH[a].name}流】常建：` + list.map(x => `${notableAnnex.has(x.k) ? '★' : ''}${nm(x.k)}(${(x.g / N * 100).toFixed(0)}%局,夺冠${(x.wr * 100).toFixed(0)}%)`).join('  '));
+  }
+  console.log('\n各别馆「夺冠关联」——建过它的玩家最终夺冠的比例（按建造频次排序，≥3%局）：');
+  const ga = Object.entries(annexGlobal).filter(([k, v]) => v.built >= N * 0.03).map(([k, v]) => ({ k, built: v.built, wr: v.byWinner / v.built })).sort((x, y) => y.wr - x.wr);
+  for (const x of ga) console.log(`  ${notableAnnex.has(x.k) ? '★' : ' '}${nm(x.k).padEnd(5)} 夺冠关联 ${(x.wr * 100).toFixed(0)}%   (出现于 ${(x.built / N * 100).toFixed(0)}% 玩家局)`);
   process.exit(0);
 }
 
