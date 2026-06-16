@@ -472,6 +472,10 @@ function getAnnexCapacity(card) {
 function effectiveBuried(slot) {
     return slot.buried.filter(b => b.specialBurial !== 'dwarf').length;
 }
+// 一具尸体占多少埋尸容量：侏儒侧放占 0（即使别馆已满也能埋）、双胞胎占 2、其余占 1
+function burialSlotsNeeded(corpse) {
+    return corpse.specialBurial === 'dwarf' ? 0 : (corpse.specialBurial === 'twins' ? 2 : 1);
+}
 
 // ==========================================
 // 初始化与设置
@@ -1067,6 +1071,14 @@ function triggerBarkerBonus(card) {
         addPlayerCash(3 * boothCount);
         logMessage("玩家", `[嘉年华摊位] 一名嘉年华旅客入住，你获得 ${3 * boothCount}F。`, "player");
     }
+    // 对称：建了摊位的 AI 叔叔同样收 3F/每嘉年华旅客入住（原先只给玩家结算，AI 的摊位形同虚设）
+    aiUncles.forEach(u => {
+        let bc = (u.annexes || []).filter(a => a.card.annexName && a.card.annexName.includes("嘉年华摊位")).length;
+        if (bc > 0) {
+            addUncleCash(u, 3 * bc);
+            logMessage("AI", `${u.name} 的 [嘉年华摊位] 生效：一名嘉年华旅客入住，他获得 ${3 * bc}F。`, "ai");
+        }
+    });
 }
 
 function triggerRoomServiceImmediate(room) {
@@ -1726,15 +1738,15 @@ function handleCorpseSelect(corpseCard) {
         // 寻找有容量空位的别馆（占用中的拖车不能埋——原版只允许"无人占用的拖车"）
         let availableSlots = [];
         let isBearded = corpseCard.specialBurial === 'bearded';
+        let need = burialSlotsNeeded(corpseCard); // 侏儒占 0：即使别馆满了也能侧放
         if (!isBearded) {
             player.annexes.forEach((annex, index) => {
                 if (annex.card.isTrailer && annex.occupant) return;
                 let maxBurial = getAnnexCapacity(annex.card);
-                if (effectiveBuried(annex) < maxBurial) availableSlots.push(index);
+                if (effectiveBuried(annex) + need <= maxBurial) availableSlots.push(index);
             });
         }
         // 对手的别馆也可以埋（平分赃款）；大胡子女士只能埋别人家
-        let need = corpseCard.specialBurial === 'twins' ? 2 : 1;
         let uncleSlotAvailable = aiUncles.some(u => (u.annexes || []).some(a =>
             !(a.card.isTrailer && a.occupant) && effectiveBuried(a) + need <= getAnnexCapacity(a.card)));
 
@@ -1769,7 +1781,7 @@ function handleAnnexSlotSelect(index) {
     }
     let corpse = pendingAction.targetCorpse;
     let maxBurial = getAnnexCapacity(targetSlot.card);
-    let needed = corpse.specialBurial === 'twins' ? 2 : 1; // 双胞胎占 2 个埋尸位、计 2 具尸体
+    let needed = burialSlotsNeeded(corpse); // 双胞胎占 2、侏儒占 0（满别馆也可侧放）
     if (effectiveBuried(targetSlot) + needed > maxBurial) {
         logMessage("系统", needed === 2 ? "双胞胎必须埋在至少有 2 个空位的别馆下。" : "这个别馆已经没有空余埋尸容量。", "warn");
         return;
@@ -2321,7 +2333,7 @@ function aiStrategicAction(self) {
     if (self.corpses.length > 0) {
         let corpse = self.corpses.slice().sort((a, b) => b.loot - a.loot)[0];
         let bCost = uncleNetCost(self, 'bury', corpse);
-        let need = corpse.specialBurial === 'twins' ? 2 : 1;
+        let need = burialSlotsNeeded(corpse); // 侏儒占 0、双胞胎占 2
         // 大胡子女士（原版）：必须埋进「另一名玩家」的别馆并平分——禁用自家槽位
         let ownSlot = corpse.specialBurial === 'bearded' ? null
             : self.annexes.find(a => !(a.card.isTrailer && a.occupant)
@@ -3771,12 +3783,12 @@ function playObject(instanceId) {
         let corpse = player.corpses.shift();
         if (corpse) removedStack.push(corpse);
     } else if (obj.effect === 'poison') {
-        // 原版：喝过[咖啡]的住客不能被下毒
-        let targets = rooms.filter(r => isOpenRoom(r) && r.occupant && !r.occupant.hasCoffee);
+        // 原版：喝过[咖啡]的住客不能被下毒。目标=旅馆中油水最高者，含拖车住客（用 allOccupiedSpots 而非只看 rooms）
+        let targets = allOccupiedSpots().filter(s => !s.occupant.hasCoffee);
         targets.sort((a, b) => (b.occupant.loot || 0) - (a.occupant.loot || 0));
         if (targets[0]) {
             let victim = targets[0].occupant;
-            targets[0].occupant = null;
+            targets[0].clear();
             victim.isDead = true;
             player.corpses.push(victim);
             logMessage("道具", `[毒药] 毒杀了油水最高的 ${victim.name}（${victim.loot}F），尸体归你。`, "warn");
