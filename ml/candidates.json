@@ -1,5 +1,6 @@
 {
   "baseline": {"kill":1.4,"bribe":0.95,"room":0.6,"service":0.85,"deny":1.5,"launderAt":28,"synergy":1,"phase":{"early":{"kill":0.4,"room":1.6,"service":1.4},"mid":{"kill":1.25,"room":0.7,"service":1.3},"late":{"kill":1.8,"room":0.3,"service":0.05}}},
   "run1_build": {"kill":1.19,"bribe":1.052,"room":1.119,"service":0.793,"deny":1.178,"launderAt":25,"synergy":0.27,"phase":{"early":{"kill":0.539,"room":2.059,"service":1.933},"mid":{"kill":0.618,"room":0.473,"service":1.261},"late":{"kill":1.554,"room":0.372,"service":0.331}}},
-  "run2_butcher": {"kill":1.454,"bribe":0.384,"room":0.681,"service":0.723,"deny":1.43,"launderAt":28,"synergy":0.858,"phase":{"early":{"kill":0.656,"room":1.712,"service":0.627},"mid":{"kill":1.031,"room":0.756,"service":1.329},"late":{"kill":1.301,"room":0.226,"service":0.206}}}
+  "run2_butcher": {"kill":1.454,"bribe":0.384,"room":0.681,"service":0.723,"deny":1.43,"launderAt":28,"synergy":0.858,"phase":{"early":{"kill":0.656,"room":1.712,"service":0.627},"mid":{"kill":1.031,"room":0.756,"service":1.329},"late":{"kill":1.301,"room":0.226,"service":0.206}}},
+  "run3_corrected": {"kill":1.196,"bribe":0.572,"room":1.166,"service":0.677,"deny":1.178,"launderAt":23,"synergy":0.109,"phase":{"early":{"kill":0.331,"room":2.365,"service":2.446},"mid":{"kill":0.455,"room":0.26,"service":1.482},"late":{"kill":1.149,"room":1.215,"service":0.602}}}
 }

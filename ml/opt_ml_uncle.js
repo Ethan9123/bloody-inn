@@ -45,13 +45,15 @@ const BOOTSTRAP = `
   // 人类当主理人时自动填客房（不影响策略，仅推进流程）
   welcomeGuestsSequentially=function(){
     var guard=0;
-    while(guard++<40){ var empty=rooms.filter(function(r){return isOpenRoom(r)&&!r.occupant;}); if(!empty.length)break; var c=drawTravelerCard(); if(!c)break; empty[0].occupant=c; }
+    while(guard++<40){ var empty=rooms.filter(function(r){return isOpenRoom(r)&&!r.occupant;}); if(!empty.length)break; var c=drawTravelerCard(); if(!c)break; empty[0].occupant=c; triggerRoomServiceImmediate(empty[0]); }
     setTimeout(finishWelcomePhase,0);
   };
   startObjectDraft=function(){ setTimeout(function(){ runPhaseWelcome(); },0); };
   // 终局：算分入 __STANDINGS，停止调度
   triggerGameOver=function(){
     currentPhase='gameover';
+    // 与真实 triggerGameOver 一致：先把仍在房内的旅客刷入离店堆，再按离店堆颜色算尾盘加成
+    rooms.forEach(function(r){ if(r.occupant){ exitStack.push(r.occupant); r.occupant=null; } });
     function fine(p){ if(p.corpses&&p.corpses.length){ var pen=p.corpses.length*10, t=p.cash+p.checks*10; if(t>=pen){ var a=pen; while(a>=10&&p.checks>0){p.checks--;a-=10;} p.cash=Math.max(0,p.cash-a);} else {p.cash=0;p.checks=0;} p.corpses=[]; } }
     fine(player); aiUncles.forEach(fine);
     var cc={'artisan-red':0,'merchant-blue':0,'religious-purple':0,'noble-green':0};
@@ -122,8 +124,12 @@ function runGame(diffs, playerCount, mlWeights) {
 function evaluate(mlWeights, games, opponents, playerCount) {
   let wins = 0, sum = 0, builds = 0, plays = 0, errs = 0, shareSum = 0;
   for (let g = 0; g < games; g++) {
-    const diffs = ['ml'].concat(opponents).slice(0, playerCount - 1);
-    while (diffs.length < playerCount - 1) diffs.push('mastermind');
+    // 每局从对手池随机抽 (playerCount-2) 个填非 ml 的 AI 席位 → 跨局轮换，让全部对手(含 scheming)都登场、对手组合多样
+    // 注：4 人局只有 3 个 AI 席位(ml+2)，无法同时摆下 3 个不同对手，故每局随机抽 2 个；3 人局抽 1 个。
+    const pool = opponents.slice();
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[pool[i], pool[j]] = [pool[j], pool[i]]; }
+    const diffs = ['ml'].concat(pool.slice(0, Math.max(0, playerCount - 2)));
+    while (diffs.length < playerCount - 1) diffs.push('mastermind'); // 池子不够才补
     // 随机洗座位顺序（避免座位偏差）
     for (let i = diffs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[diffs[i], diffs[j]] = [diffs[j], diffs[i]]; }
     const r = runGame(diffs, playerCount, mlWeights);
@@ -156,7 +162,7 @@ if (process.argv.includes('selftest')) {
 if (process.argv.includes('confirm')) {
   const cands = JSON.parse(fs.readFileSync(path.join(__dirname, 'candidates.json'), 'utf8'));
   const N = GAMES;
-  console.log('无偏对比（每配置 ' + N + ' 局）  4人对手 mastermind/murderous/scheming（均势份额33%）；3人对手 mastermind/murderous（均势50%）\n');
+  console.log('无偏对比（每配置 ' + N + ' 局）  4人=ml+每局随机2个对手(策略/嗜血/阴险)，3个AI均势份额33%；3人=ml+每局随机1个对手(策略/嗜血)，2个AI均势50%\n');
   for (const name of Object.keys(cands)) {
     const w = cands[name];
     const e4 = evaluate(w, N, ['mastermind', 'murderous', 'scheming'], 4);
@@ -169,7 +175,7 @@ if (process.argv.includes('confirm')) {
 }
 
 const opponents = ['mastermind', 'murderous', 'scheming'];
-console.log('\n基线评估当前 ml（4人，对手 mastermind/murderous/scheming，' + GAMES + '局）……');
+console.log('\n基线评估当前 ml（4人=ml+每局随机2个对手，对手池 策略/嗜血/阴险，' + GAMES + '局）……');
 const base = evaluate(BASE_ML, GAMES, opponents, 4);
 console.log('  基线 ml：财富份额 ' + (base.share * 100).toFixed(1) + '%  夺魁率 ' + (base.winrate * 100).toFixed(1) + '%  平均身价 ' + base.avgTotal.toFixed(1) + '  平均建馆 ' + base.avgBuilds.toFixed(2) + '  (有效' + base.plays + '/错误' + base.errs + ')');
 

@@ -1949,16 +1949,20 @@ const AI_PROFILES = {
     murderous:  { kill: 1.3,  bribe: 0.5, room: 0.7, service: 0.7, deny: 0.9, launderAt: 34, synergy: 0.7 },
     mastermind: { kill: 1.15, bribe: 1.0, room: 1.0, service: 1.0, deny: 1.0, launderAt: 32, synergy: 1.0 },
     // 学习叔叔：由 ml/opt_ml_uncle.js 用「真实游戏 AI」无头自对弈 + 进化策略(ES) 学到的权重。
-    // 优化器直接驱动本文件的 aiStrategicAction（vm 加载+DOM 打桩），避免 sim-to-real 偏差；
-    // 适应度=ml 在三个对手(策略/嗜血/阴险)中的财富份额。在 300 局无偏确认中，此「引擎流」候选
-    // 4人 份额42%/夺魁60%、3人 份额57%/夺魁68%，全面优于旧权重(份额25%/夺魁14%)与「屠夫流」候选。
-    // 核心转变：从「只杀不建」改为「先立引擎、多拉拢建材、少无脑杀」——正是油水改对后该有的打法。
+    // 优化器用 vm 加载+DOM 打桩直接驱动本文件的 aiStrategicAction，规避 sim-to-real 偏差。
+    // 经一轮对抗式代码评审修正了无头框架的三个失真后重训：①对手不再恒定只摆策略/嗜血——4人局每局
+    // 从{策略/嗜血/阴险}随机抽 2 个填席、3人局随机抽 1 个，跨局轮换（阴险此前从不登场）；②人类主理人
+    // 自动填房时补上[客房服务]立即收益；③终局先把在房旅客刷入离店堆再算颜色加成。适应度=ml 在 AI 对手
+    // 中的财富份额。350 局无偏确认此「引擎流(修正版)」候选最强：4人 份额43%/夺魁61%/身价64，3人 份额
+    // 65%/夺魁86%，全面优于上一版与「屠夫流」。打法：开局猛立引擎+客房服务，中段控杀，后段补建+洗钱。
+    // 注：自对弈里人类席位是被动 pass（无法忠实建模真人），故对「抢资源/拆台」类权重可能略保守；这是
+    // AI 自对弈固有局限，已知并接受——相对排序在同一环境下仍是可比的。
     ml: {
-        kill: 1.19, bribe: 1.052, room: 1.119, service: 0.793, deny: 1.178, launderAt: 25, synergy: 0.27,
+        kill: 1.196, bribe: 0.572, room: 1.166, service: 0.677, deny: 1.178, launderAt: 23, synergy: 0.109,
         phase: {
-            early: { kill: 0.539, room: 2.059, service: 1.933 },
-            mid:   { kill: 0.618, room: 0.473, service: 1.261 },
-            late:  { kill: 1.554, room: 0.372, service: 0.331 },
+            early: { kill: 0.331, room: 2.365, service: 2.446 },
+            mid:   { kill: 0.455, room: 0.26,  service: 1.482 },
+            late:  { kill: 1.149, room: 1.215, service: 0.602 },
         },
     },
 };
