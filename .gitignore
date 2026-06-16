@@ -37,3 +37,6 @@ dist_offline/
 
 # ML 优化器中间产物（最优权重已烘焙进 script.js 的 AI_PROFILES.ml）
 ml/best_ml_weights.json
+
+# Cloudflare 直传用的纯净公开包（仅 index/style/script，构建产物不入库）
+_cfdeploy/
