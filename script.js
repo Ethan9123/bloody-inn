@@ -2112,6 +2112,19 @@ function uncleAnnexImmediateEffect(self, card) {
         }
     }
 }
+// 别馆「建造时确定的即时现金」——这部分任何阶段都全额值钱（与慢回报引擎区分开）
+function annexInstantCash(card) {
+    const an = card.annexName || '';
+    if (an.includes("凉亭")) return 18;
+    if (an.includes("豪华餐厅")) return 9;
+    if (an.includes("珠宝室")) return 8;
+    if (an.includes("特大号床") || an.includes("马车站")) return 6;
+    if (an.includes("豪华吊灯") || an.includes("铁锤游戏") || an.includes("档案室")
+        || an.includes("公园") || an.includes("杂货铺") || an.includes("主教区") || an.includes("马厩")) return 4;
+    if (an.includes("高台")) return 1;
+    return 0;
+}
+
 // 长线思维③：建造估值 = 即时现金 + 每轮收益×剩余轮数(折现) + 折扣×预期使用次数 + 终局加成
 // → 前期(剩余轮数多)引擎建筑自然胜出，终局只有即时现金还值钱——AI 自己会"知道什么牌前期建"
 function annexBuildValue(self, card) {
@@ -2277,8 +2290,13 @@ function aiStrategicAction(self) {
                 let loss = uncleHelperLoss(self, 'bribe', bCost);
                 let handValue = 2 + getCardRank(bribeTarget.occupant, 'bribe') * 1.2
                     + annexBuildValue(self, bribeTarget.occupant) * 0.35; // 未来可建别馆的潜力（长线入口）
-                // 长线意图：产业还少时，拉人就是在备料——前中期给明确加成
-                let engineIntent = (!lateGame && self.annexes.length < 4) ? 3.5 : 0;
+                // 长线意图：产业还少时，拉人就是在备料——尤其手里没建材时，拉拢能建引擎的旅客是头等大事
+                let realAnnexes = self.annexes.length - 1; // 去掉初始大篷车
+                let hasBuildCard = self.hand.some(c => c.annex && c.role !== 'peasant' && c.role !== 'police');
+                let targetIsEngine = annexBuildValue(self, bribeTarget.occupant) >= 6;
+                let engineIntent = lateGame ? 0
+                    : (realAnnexes < 2 && !hasBuildCard && targetIsEngine ? 6      // 没引擎又没建材→去拉个工程旅客
+                        : self.annexes.length < 4 ? 2.5 : 0);
                 // 备料意图：便宜的拉拢（净费≤1）既添燃料又添建材
                 let fuelBonus = (bCost <= 1) ? fuelIntent : 0;
                 let bScore = handValue * prof.bribe - loss * 1.5 - wagePressure * 0.6 + engineIntent + fuelBonus
@@ -2290,9 +2308,10 @@ function aiStrategicAction(self) {
         }
     }
 
-    // B2) 雇农民：免费从酒馆抓 2 名（建造/刺杀的燃料——手牌越空越急；攥着建材缺料时是头号优先）
-    if (bistro.length > 0 && handSize < 5 && !lateGame) {
-        plans.push({ type: 'peasants', score: 6.5 - handSize * 1.0 - wagePressure * 0.5 + fuelIntent });
+    // B2) 雇农民：免费从酒馆抓 2 名（廉价燃料，但农民建不了别馆——别让它挤掉"拉拢工程旅客"）
+    //     只有手牌很空、或正缺料凑建造时才优先；否则把舞台让给拉拢真旅客
+    if (bistro.length > 0 && handSize < 4 && !lateGame) {
+        plans.push({ type: 'peasants', score: 4.0 - handSize * 0.9 - wagePressure * 0.5 + fuelIntent });
     }
 
     // C) 埋尸：把尸体的油水真正落袋；警察临近时是救命动作
@@ -2333,14 +2352,14 @@ function aiStrategicAction(self) {
         if (uncleCanPay(self, bCost, cand.id)) {
             let loss = uncleHelperLoss(self, 'build', bCost, cand.id);
             let needSlots = self.corpses.length > freeBury ? 5 + self.corpses.length * 2 : 0; // 急需埋尸坑（压尸越多越急）
-            // 建造执行决心：凑齐了建材和帮工的窗口稍纵即逝（工资/花帮工都会关掉它）——
-            // 真人会"今晚拉到人、今晚就建起来"，所以可负担的非终局建造给一笔果断加成
-            let commitBonus = !lateGame ? 3 + Math.min(3, annexBuildValue(self, cand) * 0.08) : 0;
-            // 建别馆估值已含「剩余轮数折现」——前期引擎自然高分；这里再叠车间协同
-            // prof.room 只取一半权重：那是"占房"性格，不该全额决定"盖产业"的意愿
-            let buildProf = prof.room * 0.5 + 0.5;
-            let dScore = (annexBuildValue(self, cand) * 0.7 - loss * 1.5 + needSlots) * buildProf * (pm.room * 0.25 + 0.75) * 0.85
-                + commitBonus - (lateGame ? 4 : 0);
+            // 把估值拆成「即时现金」(任何阶段全额) 与「慢回报引擎」(后期大幅打折)，避免后期把白送的+现金别馆也压成负分
+            let abv = annexBuildValue(self, cand);
+            let inst = annexInstantCash(cand);
+            let strat = Math.max(0, abv - inst * 0.9);
+            let realAnnexes = self.annexes.length - 1; // 去掉初始大篷车
+            let establish = (realAnnexes < 2 && !lateGame) ? 4.5 : 0; // 还没立起引擎→强力催建首座/次座
+            let buildProf = prof.room * 0.4 + 0.6;     // 性格影响（轻；不再把建造意愿压死）
+            let dScore = (inst * 0.95 + strat * (lateGame ? 0.4 : 0.9) - loss * 1.3 + needSlots + establish) * buildProf;
             if (dScore > 0) dScore *= syn.build; // 协同：车间让继续扩建更划算
             plans.push({ type: 'build', card: cand, cost: bCost, score: dScore });
         }
@@ -2360,6 +2379,18 @@ function aiStrategicAction(self) {
     let effLaunderAt = Math.max(12, prof.launderAt - 5 * checkBonusAnnexes);
     if (self.cash >= 36) plans.push({ type: 'launder', score: 100 });
     else if (self.cash >= effLaunderAt) plans.push({ type: 'launder', score: 9 + checkBonusAnnexes * 3 });
+
+    // 开局引擎建立：连第一座引擎都没有时，强力优先「攒建材→建出来」，别被即时小利(杀小鱼/洗钱)带跑。
+    // 否则油水变高后 AI 会沉迷 杀-埋-洗钱 的小循环，整局零别馆——看起来很蠢。
+    if (!lateGame && (self.annexes.length - 1) < 1) {
+        plans.forEach(p => {
+            if (p.type === 'build') p.score += 8;                                                   // 手里有建材就先建
+            else if (p.type === 'peasants' && fuelShort > 0) p.score += 4.5;                         // 缺料→赶紧凑燃料
+            else if (p.type === 'bribe' && p.spot && annexBuildValue(self, p.spot.occupant) >= 6) p.score += 4.5; // 没建材→拉个工程旅客
+            else if (p.type === 'launder' && self.cash < 38) p.score = Math.min(p.score, 2);          // 没爆仓先别洗，钱留着养手牌
+            else if (p.type === 'kill' && p.spot && (p.spot.occupant.loot || 0) <= 8) p.score -= 4;    // 别为 8F 小鱼浪费帮工
+        });
+    }
 
     // 记仇：玩家动过这位叔叔的房客/地盘后，他对玩家目标的"拆台"评分加权
     if (self.grudge && self.grudge.heat > 0) {
