@@ -1948,14 +1948,17 @@ const AI_PROFILES = {
     scheming:   { kill: 0.9,  bribe: 1.2, room: 0.9, service: 0.9, deny: 0.7, launderAt: 34, synergy: 0.7 },
     murderous:  { kill: 1.3,  bribe: 0.5, room: 0.7, service: 0.7, deny: 0.9, launderAt: 34, synergy: 0.7 },
     mastermind: { kill: 1.15, bribe: 1.0, room: 1.0, service: 1.0, deny: 1.0, launderAt: 32, synergy: 1.0 },
-    // 学习叔叔：由 ml/optimize_ai.js 自我对弈 + 进化策略(ES) 学到的权重（含各自的阶段调节）。
-    // 取自适应度可信的候选(约 68% 对基线胜率)；高于此的候选被判为过拟合模拟器而舍弃。
+    // 学习叔叔：由 ml/opt_ml_uncle.js 用「真实游戏 AI」无头自对弈 + 进化策略(ES) 学到的权重。
+    // 优化器直接驱动本文件的 aiStrategicAction（vm 加载+DOM 打桩），避免 sim-to-real 偏差；
+    // 适应度=ml 在三个对手(策略/嗜血/阴险)中的财富份额。在 300 局无偏确认中，此「引擎流」候选
+    // 4人 份额42%/夺魁60%、3人 份额57%/夺魁68%，全面优于旧权重(份额25%/夺魁14%)与「屠夫流」候选。
+    // 核心转变：从「只杀不建」改为「先立引擎、多拉拢建材、少无脑杀」——正是油水改对后该有的打法。
     ml: {
-        kill: 1.40, bribe: 0.95, room: 0.60, service: 0.85, deny: 1.50, launderAt: 28, synergy: 1.0,
+        kill: 1.19, bribe: 1.052, room: 1.119, service: 0.793, deny: 1.178, launderAt: 25, synergy: 0.27,
         phase: {
-            early: { kill: 0.40, room: 1.60, service: 1.40 },
-            mid:   { kill: 1.25, room: 0.70, service: 1.30 },
-            late:  { kill: 1.80, room: 0.30, service: 0.05 },
+            early: { kill: 0.539, room: 2.059, service: 1.933 },
+            mid:   { kill: 0.618, room: 0.473, service: 1.261 },
+            late:  { kill: 1.554, room: 0.372, service: 0.331 },
         },
     },
 };

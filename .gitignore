@@ -33,3 +33,7 @@ _base_rules.txt
 
 # 离线整合包构建目录与产物（含版权图片，仅本地/私下分享，不入库）
 dist_offline/
+血腥旅馆-离线版/
+
+# ML 优化器中间产物（最优权重已烘焙进 script.js 的 AI_PROFILES.ml）
+ml/best_ml_weights.json
