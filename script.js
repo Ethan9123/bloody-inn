@@ -426,6 +426,8 @@ function resetRoundEffects() {
         wageSurcharge: 0,
         fiasco: false,
         pickpockets: false,
+        brokenSafe: false,            // [破保险箱]事件：延后到「房客退房之后」再扣支票（官方时点）
+        letterPlayedThisRound: false, // 本轮是否有人打出[举报信]——[诬告信]事件以此为触发条件
         protectedCorpses: 0,
         cakeTargets: []   // [蛋糕]招待的住客（{id,rank,name}）——其离店时支付 2F×等级；中途被杀/拉拢则作废
     };
@@ -1116,13 +1118,19 @@ function resolveCarnieEvent() {
     // 大横幅：事件结算是全桌大事，不能只藏在日志里
     showBanner(`⚡ ${currentEvent.name}`, currentEvent.desc, 'carnie');
 
-    if (currentEvent.id === 'blackmail' || currentEvent.id === 'red_herring') {
-        roundEffects.forceInvestigation = true;
+    if (currentEvent.id === 'blackmail') {
+        roundEffects.forceInvestigation = true; // 勒索：无条件按调查清算未埋尸体
+    } else if (currentEvent.id === 'red_herring') {
+        // 诬告信（官方）：仅当本轮有人打出[举报信]才生效；否则虚惊一场、无事发生
+        if (roundEffects.letterPlayedThisRound) {
+            roundEffects.forceInvestigation = true;
+            logMessage("事件", "诬告信：本轮确有人递了举报信，按调查清算所有未埋尸体。", "warn");
+        } else {
+            logMessage("事件", "诬告信落空——本轮无人递举报信，虚惊一场，无事发生。", "system");
+        }
     } else if (currentEvent.id === 'broken_safe') {
-        let playerLost = Math.ceil(player.checks / 2);
-        player.checks = Math.max(0, player.checks - playerLost);
-        aiUncles.forEach(u => { u.checks = Math.max(0, u.checks - Math.ceil(u.checks / 2)); });
-        logMessage("事件", `破保险箱：所有人各失去约一半支票（你失去 ${playerLost} 张）。`, "warn");
+        // 官方时点：在「房客退房之后」才扣支票——此处仅置标志，结算放到 morningStepRent 末尾
+        roundEffects.brokenSafe = true;
     } else if (currentEvent.id === 'cirrhosis') {
         if (bistro.length > 0) {
             let removed = bistro.pop();
@@ -1504,7 +1512,7 @@ function finishPlayerAction() {
             awardBuryLoot(corpse, targetSlot.card.annexName, false);
         } else {
             targets.forEach(corpse => {
-                let needed = corpse.specialBurial === 'twins' ? 2 : 1;
+                let needed = burialSlotsNeeded(corpse); // 侏儒占 0/双胞胎占 2，与单尸路径一致
                 let targetSlot = null;
                 for (let idx = 0; idx < player.annexes.length; idx++) {
                     let annex = player.annexes[idx];
@@ -1812,7 +1820,8 @@ function handleCorpseSelect(corpseCard) {
     if (pendingAction.type !== 'bury' || warnIfAwaitingPayment()) return;
     
     let hasArchbishop = player.annexes.some(a => a.card.annexName.includes("地下墓室"));
-    if (hasArchbishop) {
+    // 大胡子女士必须单独埋进【对手】别馆并与馆主平分——不能进大主教批量自埋路径
+    if (hasArchbishop && corpseCard.specialBurial !== 'bearded') {
         toggleSelectedTarget(corpseCard);
     } else {
         pendingAction.targetCorpse = corpseCard;
@@ -2525,6 +2534,7 @@ function aiStrategicAction(self) {
         let oppUnburied = (player.corpses || []).length + aiUncles.filter(u => u !== self).reduce((s, u) => s + (u.corpses || []).length, 0);
         if (oppUnburied >= 2 && myUnburied === 0 && !policeLurking && uncleConsumeObject(self, 'force_police')) {
             roundEffects.forceInvestigation = true;
+            roundEffects.letterPlayedThisRound = true; // 供[诬告信]事件判定
             logMessage("AI", `${self.name}打出[举报信]：今晚就算没警察，也要清算所有未埋尸体！`, "warn");
         }
     }
@@ -3020,6 +3030,14 @@ function morningStepRent() {
         logMessage("玩家", `[实验室] 退房时对手仍有未埋尸体，你获得 ${3 * labCount}F。`, "player");
         playEffect('rent', `+${3 * labCount}F`, document.querySelector('.player-wealth-box'));
     }
+    // 对称：叔叔的[实验室]——若「其他任一玩家(含人类与其它叔叔)」仍有未埋尸体，每座 +3F
+    aiUncles.forEach(u => {
+        let labs = (u.annexes || []).filter(a => a.card.annexName.includes("实验室")).length;
+        if (labs > 0 && (player.corpses.length > 0 || aiUncles.some(x => x !== u && x.corpses.length > 0))) {
+            addUncleCash(u, 3 * labs);
+            logMessage("AI", `${u.name}的[实验室]：退房时有对手仍有未埋尸体，他获得 ${3 * labs}F。`, "ai");
+        }
+    });
 
     if (roundEffects.pickpockets) {
         player.cash = Math.max(0, player.cash - 2);
@@ -3027,7 +3045,14 @@ function morningStepRent() {
         logMessage("事件", "扒手横行：所有人各损失 2F 现金。", "warn");
         playEffect('object');
     }
-    
+    // [破保险箱]事件（官方时点：房客退房之后才扣支票）
+    if (roundEffects.brokenSafe) {
+        let playerLost = Math.ceil(player.checks / 2);
+        player.checks = Math.max(0, player.checks - playerLost);
+        aiUncles.forEach(u => { u.checks = Math.max(0, u.checks - Math.ceil(u.checks / 2)); });
+        logMessage("事件", `破保险箱（房客退房后结算）：所有人各失去约一半支票（你失去 ${playerLost} 张）。`, "warn");
+    }
+
     renderUI();
     setTimeout(morningStepWages, 1000);
 }
@@ -3078,6 +3103,14 @@ function morningStepWages() {
         addPlayerCash(2 * pharmCount);
         logMessage("玩家", `[药房] 有对手囤了一手帮工（≥3 张），你获得 ${2 * pharmCount}F。`, "player");
     }
+    // 对称：叔叔的[药房]——若「另一名玩家(含人类与其它叔叔)」手中帮工 ≥3 张，每座 +2F
+    aiUncles.forEach(u => {
+        let pharms = (u.annexes || []).filter(a => a.card.annexName.includes("药房")).length;
+        if (pharms > 0 && (player.hand.length >= 3 || aiUncles.some(x => x !== u && (x.hand || []).length >= 3))) {
+            addUncleCash(u, 2 * pharms);
+            logMessage("AI", `${u.name}的[药房]：有对手囤了一手帮工（≥3 张），他获得 ${2 * pharms}F。`, "ai");
+        }
+    });
 
     let HandSize = player.hand.length;
     if (HandSize > 0) {
@@ -4051,6 +4084,7 @@ function playObject(instanceId) {
         logMessage("道具", "[金牙] 已备好钳子——下一次埋葬等级≥1的尸体时，额外掠夺 2F × 其埋葬等级。", "player");
     } else if (obj.effect === 'force_police') {
         roundEffects.forceInvestigation = true;
+        roundEffects.letterPlayedThisRound = true; // 供[诬告信]事件判定
     } else if (obj.effect === 'hide_corpse') {
         roundEffects.protectedCorpses += 1;
     } else if (obj.effect === 'coffee') {
