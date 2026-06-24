@@ -2496,6 +2496,18 @@ function aiStrategicAction(self) {
     let unservicedMine = myOpenRooms.find(r => !roomHasService(r));
     const isOpp = s => s.ownerKey !== selfKey && s.ownerKey !== 'neutral' && s.ownerKey !== 'closed';
     const lateGame = getRoundPhase() === 'late';
+    // 道具[毒药]：黄昏免费毒杀大堂里油水最高的住客（非咖啡免疫），尸体归己——白嫖一具高油水尸体
+    if ((self.objects || []).some(o => o.effect === 'poison')) {
+        let pc = occupied.filter(s => !s.occupant.hasCoffee).sort((a, b) => (b.occupant.loot || 0) - (a.occupant.loot || 0));
+        if (pc[0] && (pc[0].occupant.loot || 0) >= 12 && uncleConsumeObject(self, 'poison')) {
+            let victim = pc[0].occupant;
+            pc[0].clear();
+            victim.isDead = true;
+            (self.corpses = self.corpses || []).push(victim);
+            logMessage("AI", `${self.name}用[毒药]毒杀了油水最高的 ${victim.name}（${victim.loot}F），尸体归他。`, "warn");
+            occupied = allOccupiedSpots(); // 毒杀后刷新大堂占位
+        }
+    }
     const policeLurking = occupied.some(s => s.occupant.role === 'police');
     // 道具：[咖啡]招待大堂里等级最高的住客（1F×等级，不占行动；该住客随后不能被下毒）
     let coffeeCands = occupied.map(s => s.occupant).filter(c => getCardRank(c, 'bribe') >= 1 && !c.hasCoffee);
@@ -2505,6 +2517,15 @@ function aiStrategicAction(self) {
             best.hasCoffee = true;
             addUncleCash(self, getCardRank(best, 'bribe'));
             logMessage("AI", `${self.name}用[咖啡]招待了 ${best.name}，立得 ${getCardRank(best, 'bribe')}F。`, "ai");
+        }
+    }
+    // 道具[举报信]：黄昏强制本轮调查——对手有≥2 具未埋尸体而自己一具都没有时打出，专坑对手
+    if ((self.objects || []).some(o => o.effect === 'force_police') && !roundEffects.forceInvestigation) {
+        let myUnburied = (self.corpses || []).length;
+        let oppUnburied = (player.corpses || []).length + aiUncles.filter(u => u !== self).reduce((s, u) => s + (u.corpses || []).length, 0);
+        if (oppUnburied >= 2 && myUnburied === 0 && !policeLurking && uncleConsumeObject(self, 'force_police')) {
+            roundEffects.forceInvestigation = true;
+            logMessage("AI", `${self.name}打出[举报信]：今晚就算没警察，也要清算所有未埋尸体！`, "warn");
         }
     }
     const handSize = self.hand.length;
