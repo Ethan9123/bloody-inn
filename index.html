@@ -26,12 +26,20 @@
                     </div>
                 </div>
                 <div class="setup-group">
-                    <label>玩家人数（你 + AI 叔叔，座位随机）</label>
+                    <label id="player-count-label">玩家人数（你 + AI 叔叔，座位随机）</label>
                     <div class="btn-toggle-group">
                         <button id="btn-pc-2" class="btn btn-toggle active" onclick="setPlayerCount(2)">2 人 (你+1)</button>
                         <button id="btn-pc-3" class="btn btn-toggle" onclick="setPlayerCount(3)">3 人 (你+2)</button>
                         <button id="btn-pc-4" class="btn btn-toggle" onclick="setPlayerCount(4)">4 人 (你+3)</button>
                     </div>
+                </div>
+                <div class="setup-group">
+                    <label>观战与解说</label>
+                    <div class="btn-toggle-group">
+                        <button id="btn-spectator-mode" class="btn btn-toggle" onclick="toggleSpectatorMode()" title="玩家席位交给学习叔叔控制，你只在一旁看 AI 互打。">AI观战模式</button>
+                        <button id="btn-live-cast" class="btn btn-toggle active" onclick="toggleLiveCast()" title="显示每位 AI 出手前的预测、理由、风险和备选行动。">旁白分析开启</button>
+                    </div>
+                    <p class="setup-hint">观战模式下，“你”的座位会变成观察席 AI；你可以坐在旁边看不同难度 AI 互相下手。</p>
                 </div>
                 <div class="setup-group">
                     <label>叔叔①难度</label>
@@ -110,7 +118,7 @@
                     <div class="track-row">
                         <!-- 玩家财富 -->
                         <div class="player-wealth-box">
-                            <span class="wealth-label">您的资金:</span>
+                            <span class="wealth-label" id="player-wealth-label">您的资金:</span>
                             <div class="wealth-display">
                                 <span class="cash-value" id="player-cash">5</span><span class="currency">F</span>
                                 <div class="checks-display" id="player-checks">
@@ -156,14 +164,14 @@
                     <div class="player-assets-grid">
                         <!-- 玩家资产 -->
                         <div class="assets-column glass">
-                            <h4><i data-lucide="building"></i> 您的别馆 & 墓穴 (<span id="player-annex-count">0</span>)</h4>
+                            <h4><i data-lucide="building"></i> <span id="player-annex-title">您的别馆 & 墓穴</span> (<span id="player-annex-count">0</span>)</h4>
                             <div class="assets-list" id="player-annexes">
                                 <!-- 包含别馆卡牌和塞在别馆底下的尸体 -->
                             </div>
                         </div>
                         <!-- 玩家未埋尸体 -->
                         <div class="assets-column glass">
-                            <h4><i data-lucide="skull"></i> 您的未埋尸体堆 (<span id="player-corpse-count">0</span>)</h4>
+                            <h4><i data-lucide="skull"></i> <span id="player-corpse-title">您的未埋尸体堆</span> (<span id="player-corpse-count">0</span>)</h4>
                             <div class="assets-list corpses" id="player-corpses">
                                 <!-- 杀死的旅客尸体，翻到背面 -->
                             </div>
@@ -173,7 +181,7 @@
                     <!-- 玩家手牌 (帮凶) -->
                     <div class="player-hand-section glass">
                         <div class="hand-header">
-                            <h4><i data-lucide="users"></i> 您的帮凶手牌 (清晨每张扣1F工资)</h4>
+                            <h4><i data-lucide="users"></i> <span id="player-hand-title">您的帮凶手牌</span> (清晨每张扣1F工资)</h4>
                             <span class="hand-counter" id="hand-count">0 张</span>
                         </div>
                         <div class="hand-cards" id="player-hand">
@@ -206,6 +214,15 @@
                     <div class="interactive-action-area hidden" id="interactive-actions">
                         <!-- 比如：取消行动，选择支付帮凶等 -->
                     </div>
+                </div>
+
+                <div class="commentary-box glass" id="commentary-box">
+                    <h3><i data-lucide="radio"></i> AI 解说台</h3>
+                    <div class="commentary-current" id="commentary-current">
+                        <div class="cast-kicker">等待夜幕落下</div>
+                        <div class="cast-main">开启旁白后，我会在这里预测 AI 可能做什么，以及它为什么这么想。</div>
+                    </div>
+                    <div class="commentary-feed" id="commentary-feed"></div>
                 </div>
 
                 <!-- 邪恶叔叔 AI 状态 -->
@@ -415,6 +432,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=22c"></script>
+    <script src="script.js?v=22d"></script>
 </body>
 </html>
