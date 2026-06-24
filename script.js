@@ -175,7 +175,7 @@ const OBJECT_CARDS = [
     { id: "cake", name: "蛋糕", cost: 0, timing: "黄昏", desc: "放在一名住客上：其退房离店时你额外获得 2F × 其住宿等级。", effect: "extra_rent" },
     { id: "gold_teeth", name: "金牙", cost: 0, timing: "埋尸", desc: "下一次埋尸：额外掠夺 2F × 该尸体的埋葬等级。", effect: "bury_bonus" },
     { id: "letter", name: "举报信", cost: 0, timing: "黄昏", desc: "本轮清晨即使没有警察，也强制按调查处理所有未埋尸体。", effect: "force_police" },
-    { id: "rug", name: "地毯", cost: 0, timing: "清晨", desc: "把 1 具未埋尸体扫到地毯下，本轮调查不会被发现。", effect: "hide_corpse" },
+    { id: "rug", name: "地毯", cost: 0, timing: "黄昏", desc: "把另一名玩家的 1 具未埋尸体卷进地毯据为己有——如同你刚杀了他（可供你之后埋葬掠夺）。", effect: "claim_corpse" },
     { id: "coffee", name: "咖啡", cost: 1, timing: "黄昏", desc: "招待一名住客：立刻获得 1F × 其住宿等级；该住客本轮不能被下毒。", effect: "coffee" },
     { id: "hammer", name: "锤子", cost: 1, timing: "建造", desc: "下一次建造打出的帮工全部返回手牌。", effect: "return_build" },
     { id: "liquor", name: "烈酒", cost: 1, timing: "拉拢", desc: "下一次拉拢打出的帮工全部返回手牌。", effect: "return_bribe" },
@@ -730,7 +730,7 @@ let paymentState = null;
 // AI 对道具的估值（用于轮抽挑选）：常用且 AI 会玩的道具更值钱
 const AI_OBJECT_VALUE = {
     coffee: 5, extra_rent: 5, bury_bonus: 4.2, hide_corpse: 4, remove_corpse: 4,
-    catchup: 3.5, force_police: 3, poison: 2.5,
+    catchup: 3.5, claim_corpse: 3.2, force_police: 3, poison: 2.5,
 };
 function aiObjectValue(o) {
     return (AI_OBJECT_VALUE[o.effect] || 2) - o.cost * 0.8;
@@ -2538,6 +2538,19 @@ function aiStrategicAction(self) {
             logMessage("AI", `${self.name}打出[举报信]：今晚就算没警察，也要清算所有未埋尸体！`, "warn");
         }
     }
+    // 道具[地毯]：把对手一具高油水(≥18)未埋尸体卷走据为己有，且自己还有埋葬位时才划算
+    if ((self.objects || []).some(o => o.effect === 'claim_corpse') && uncleFreeBuryCapacity(self) > 0) {
+        let pool = [];
+        (player.corpses || []).forEach(c => pool.push({ c, owner: player }));
+        aiUncles.filter(u => u !== self).forEach(u => (u.corpses || []).forEach(c => pool.push({ c, owner: u })));
+        pool.sort((a, b) => (b.c.loot || 0) - (a.c.loot || 0));
+        if (pool[0] && (pool[0].c.loot || 0) >= 18 && uncleConsumeObject(self, 'claim_corpse')) {
+            let owner = pool[0].owner, c = pool[0].c;
+            owner.corpses.splice(owner.corpses.indexOf(c), 1);
+            (self.corpses = self.corpses || []).push(c);
+            logMessage("AI", `${self.name}用[地毯]把${owner === player ? '你' : owner.name}的未埋尸体 ${c.name}（${c.loot}F）卷走据为己有。`, "warn");
+        }
+    }
     const handSize = self.hand.length;
     const wagePressure = Math.max(0, handSize - 4) * 1.5; // 手牌太多→明早工资负担
     const freeBury = uncleFreeBuryCapacity(self);
@@ -4087,6 +4100,20 @@ function playObject(instanceId) {
         roundEffects.letterPlayedThisRound = true; // 供[诬告信]事件判定
     } else if (obj.effect === 'hide_corpse') {
         roundEffects.protectedCorpses += 1;
+    } else if (obj.effect === 'claim_corpse') {
+        // [地毯]（官方仅有澄清"迎客后：该尸体归你、如同你刚杀了他"，无完整卡面）——本数字版据此推断为：
+        // 把另一名玩家的 1 具未埋尸体卷走据为己有，供你之后埋葬掠夺。0F、情境性，区别于 3F 主动的[毒药]。
+        let best = null, bestU = null;
+        aiUncles.forEach(u => (u.corpses || []).forEach(c => { if (!best || (c.loot || 0) > (best.loot || 0)) { best = c; bestU = u; } }));
+        if (!best) {
+            player.objects.splice(idx, 0, obj);
+            logMessage("道具", "[地毯] 现在没有对手的未埋尸体可卷走，先收回。", "player");
+            renderUI();
+            return;
+        }
+        bestU.corpses.splice(bestU.corpses.indexOf(best), 1);
+        player.corpses.push(best);
+        logMessage("道具", `[地毯] 你把 ${bestU.name} 的未埋尸体 ${best.name}（${best.loot}F）卷进地毯据为己有——如同你刚杀了他。`, "warn");
     } else if (obj.effect === 'coffee') {
         // 原版[咖啡]：放在一名住客上，立得 1F × 住宿等级；该住客不能再被下毒
         let cands = allOccupiedSpots().map(s => s.occupant).filter(c => getCardRank(c, 'bribe') >= 1 && !c.hasCoffee);
