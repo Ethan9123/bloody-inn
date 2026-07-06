@@ -314,9 +314,6 @@ let pendingAction = {
     targetCorpse: null,
     selectedHelpers: []
 };
-
-const HUMAN_PLAYER_COUNT = 2;
-
 function shuffleCards(cards) {
     // 无偏 Fisher-Yates 洗牌（sort(()=>Math.random()-0.5) 分布有偏，会让座位/牌序系统性倾斜）
     for (let i = cards.length - 1; i > 0; i--) {
@@ -481,6 +478,22 @@ function effectiveBuried(slot) {
 // 一具尸体占多少埋尸容量：侏儒侧放占 0（即使别馆已满也能埋）、双胞胎占 2、其余占 1
 function burialSlotsNeeded(corpse) {
     return corpse.specialBurial === 'dwarf' ? 0 : (corpse.specialBurial === 'twins' ? 2 : 1);
+}
+
+function canFitCorpsesInSlots(corpses, slots) {
+    let freeSlots = slots
+        .filter(slot => !(slot.card.isTrailer && slot.occupant))
+        .map(slot => Math.max(0, getAnnexCapacity(slot.card) - effectiveBuried(slot)));
+    return corpses
+        .map(burialSlotsNeeded)
+        .sort((a, b) => b - a)
+        .every(needed => {
+            if (needed === 0) return true;
+            let slotIndex = freeSlots.findIndex(free => free >= needed);
+            if (slotIndex === -1) return false;
+            freeSlots[slotIndex] -= needed;
+            return true;
+        });
 }
 
 // ==========================================
@@ -1346,14 +1359,7 @@ function confirmTargets() {
             totalCost += Math.max(0, getCardRank(t, 'bury') - abbotCount - (objectEffects.buryDiscount || 0));
         });
         
-        // 检查别馆容量
-        let totalCapacity = 0;
-        player.annexes.forEach(annex => {
-            let maxBurial = getAnnexCapacity(annex.card);
-            totalCapacity += (maxBurial - effectiveBuried(annex));
-        });
-        
-        if (totalCapacity < pendingAction.targets.length) {
+        if (!canFitCorpsesInSlots(pendingAction.targets, player.annexes)) {
             logMessage("系统", "别馆总剩余容量不足以容纳所选的全部尸体！", "warn");
             return;
         }
@@ -1376,18 +1382,25 @@ function finishPlayerAction() {
     }
 
     if (pendingAction.type === 'bury' && pendingAction.target && pendingAction.target.annexIndex !== undefined) {
+        let targetOwner = pendingAction.target.uncleIdx !== undefined ? aiUncles[pendingAction.target.uncleIdx] : null;
         let targetSlot = pendingAction.target.uncleIdx !== undefined
-            ? aiUncles[pendingAction.target.uncleIdx].annexes[pendingAction.target.annexIndex]
+            ? targetOwner && targetOwner.annexes[pendingAction.target.annexIndex]
             : player.annexes[pendingAction.target.annexIndex];
         if (!targetSlot) {
             logMessage("系统", "目标别馆不存在，请取消后重新选择埋尸位置。", "warn");
             return;
         }
         let maxBurial = getAnnexCapacity(targetSlot.card);
-        if (effectiveBuried(targetSlot) >= maxBurial) {
+        let needed = burialSlotsNeeded(pendingAction.target.corpse);
+        if (effectiveBuried(targetSlot) + needed > maxBurial) {
             logMessage("系统", "目标别馆容量已满，请取消后重新选择埋尸位置。", "warn");
             return;
         }
+    }
+    if (pendingAction.type === 'bury' && (!pendingAction.target || pendingAction.target.annexIndex === undefined)
+        && pendingAction.targets.length > 0 && !canFitCorpsesInSlots(pendingAction.targets, player.annexes)) {
+        logMessage("系统", "当前别馆容量已不足以埋下所选尸体，请取消后重新选择。", "warn");
+        return;
     }
 
     // 扣除打出的帮工
@@ -1951,6 +1964,7 @@ function renderInteractivePaymentArea() {
 
 function selectHelperCard(card) {
     if (!pendingAction.type || pendingAction.cost === undefined) return;
+    if (!player.hand.some(h => h.id === card.id)) return;
     if (pendingAction.type === 'build' && pendingAction.targets.some(t => t.id === card.id)) {
         logMessage("系统", "正在建造的目标卡不能同时作为支付费用的帮工。", "warn");
         return;
@@ -2596,7 +2610,7 @@ function aiStrategicAction(self) {
                     + annexBuildValue(self, bribeTarget.occupant) * 0.35; // 未来可建别馆的潜力（长线入口）
                 // 长线意图：产业还少时，拉人就是在备料——尤其手里没建材时，拉拢能建引擎的旅客是头等大事
                 let realAnnexes = self.annexes.length - 1; // 去掉初始大篷车
-                let hasBuildCard = self.hand.some(c => c.annex && c.role !== 'peasant' && c.role !== 'police');
+                let hasBuildCard = buildables0.length > 0;
                 let targetIsEngine = annexBuildValue(self, bribeTarget.occupant) >= 6;
                 let engineIntent = lateGame ? 0
                     : (realAnnexes < 2 && !hasBuildCard && targetIsEngine ? 6      // 没引擎又没建材→去拉个工程旅客
@@ -3213,11 +3227,9 @@ function triggerGameOver() {
     updateHeaderStatus("游戏结束", "gameover");
     logMessage("系统", "====== 旅客牌堆清空！游戏结束！开始清算资产！ ======", "warn");
 
-    rooms.forEach(room => {
-        if (room.occupant) {
-            exitStack.push(room.occupant);
-            room.occupant = null;
-        }
+    allOccupiedSpots().forEach(spot => {
+        exitStack.push(spot.occupant);
+        spot.clear();
     });
     
     if (player.corpses.length > 0) {
@@ -3518,7 +3530,7 @@ function renderExtraUncles() {
     box.classList.remove('hidden');
     let buryMode = pendingAction.type === 'bury' && pendingAction.targetCorpse;
     let corpse = pendingAction.targetCorpse;
-    let need = corpse && corpse.specialBurial === 'twins' ? 2 : 1;
+    let need = corpse ? burialSlotsNeeded(corpse) : 1;
 
     box.innerHTML = `<h4><i data-lucide="users"></i> 对手牌桌</h4>` + aiUncles.map(u => {
         let handBacks = (u.hand || []).slice(0, 9).map(() => `<span class="mini-back">🂠</span>`).join('')
@@ -3556,7 +3568,7 @@ function handleUncleAnnexSlotSelect(uncleIdx, annexIndex) {
     let slot = u && u.annexes[annexIndex];
     if (!slot) return;
     let corpse = pendingAction.targetCorpse;
-    let need = corpse.specialBurial === 'twins' ? 2 : 1;
+    let need = burialSlotsNeeded(corpse);
     if ((slot.card.isTrailer && slot.occupant) || effectiveBuried(slot) + need > getAnnexCapacity(slot.card)) {
         logMessage("系统", "对方这座别馆埋不下。", "warn");
         return;
@@ -3693,12 +3705,20 @@ function renderUI() {
         cardDiv.id = `hand-${card.id}`;
         cardDiv.className = `card ${card.color}`;
         
-        if (pendingAction.type === 'build' && card.role !== 'peasant' && card.role !== 'police') {
+        if (pendingAction.cost !== undefined) {
+            let blockedForPayment = pendingAction.type === 'build' && pendingAction.targets.some(t => t.id === card.id);
+            if (blockedForPayment) {
+                cardDiv.classList.add('payment-blocked');
+            } else {
+                cardDiv.classList.add('clickable', 'highlight');
+                cardDiv.onclick = () => selectHelperCard(card);
+            }
+            if (pendingAction.selectedHelpers.some(h => h.id === card.id)) {
+                cardDiv.classList.add('selected');
+            }
+        } else if (pendingAction.type === 'build' && card.role !== 'peasant' && card.role !== 'police') {
             cardDiv.classList.add('clickable');
             cardDiv.onclick = () => handleBuildSelect(card);
-        } else if (pendingAction.cost !== undefined) {
-            cardDiv.classList.add('clickable');
-            cardDiv.onclick = () => selectHelperCard(card);
         }
         
         cardDiv.innerHTML = `
@@ -3744,7 +3764,7 @@ function renderUI() {
         let isTrailerSlot = !!slot.card.isTrailer;
         // 埋尸：仅当坑位真的放得下才可点击（满坑不再误导玩家；占用中的拖车不能埋；大胡子不能埋自家别馆）
         if (pendingAction.type === 'bury' && pendingAction.targetCorpse) {
-            let needSlots = pendingAction.targetCorpse.specialBurial === 'twins' ? 2 : 1;
+            let needSlots = burialSlotsNeeded(pendingAction.targetCorpse);
             let hasRoom = effectiveBuried(slot) + needSlots <= getAnnexCapacity(slot.card);
             let beardedBlock = pendingAction.targetCorpse.specialBurial === 'bearded';
             if (!(isTrailerSlot && slot.occupant) && hasRoom && !beardedBlock) {
@@ -4073,10 +4093,21 @@ function renderObjectCards() {
     });
 }
 
+function restoreObjectAt(idx, obj) {
+    player.objects.splice(Math.min(idx, player.objects.length), 0, obj);
+    renderUI();
+}
+
 function playObject(instanceId) {
     let idx = player.objects.findIndex(o => o.instanceId === instanceId);
     if (idx === -1) return;
-    let obj = player.objects.splice(idx, 1)[0];
+    let obj = player.objects[idx];
+    let mutatesBoard = ['poison', 'claim_corpse', 'remove_corpse', 'hide_corpse'].includes(obj.effect);
+    if (pendingAction.type && mutatesBoard) {
+        logMessage("道具", "请先完成或取消当前行动，再使用会改变场上目标的道具。", "warn");
+        return;
+    }
+    obj = player.objects.splice(idx, 1)[0];
     logMessage("道具", `使用了 [${obj.name}]：${obj.desc}`, "player");
     playEffect('object', obj.name, document.getElementById('player-objects-section'));
 
@@ -4099,6 +4130,11 @@ function playObject(instanceId) {
         roundEffects.forceInvestigation = true;
         roundEffects.letterPlayedThisRound = true; // 供[诬告信]事件判定
     } else if (obj.effect === 'hide_corpse') {
+        if (player.corpses.length === 0) {
+            logMessage("道具", "[雪堆] 现在没有未埋尸体可隐藏，先收回。", "player");
+            restoreObjectAt(idx, obj);
+            return;
+        }
         roundEffects.protectedCorpses += 1;
     } else if (obj.effect === 'claim_corpse') {
         // [地毯]（官方仅有澄清"迎客后：该尸体归你、如同你刚杀了他"，无完整卡面）——本数字版据此推断为：
@@ -4150,7 +4186,13 @@ function playObject(instanceId) {
         }
     } else if (obj.effect === 'remove_corpse') {
         let corpse = player.corpses.shift();
-        if (corpse) removedStack.push(corpse);
+        if (corpse) {
+            removedStack.push(corpse);
+        } else {
+            logMessage("道具", "[墓碑] 现在没有未埋尸体可移走，先收回。", "player");
+            restoreObjectAt(idx, obj);
+            return;
+        }
     } else if (obj.effect === 'poison') {
         // 原版：喝过[咖啡]的住客不能被下毒。目标=旅馆中油水最高者，含拖车住客（用 allOccupiedSpots 而非只看 rooms）
         let targets = allOccupiedSpots().filter(s => !s.occupant.hasCoffee);
@@ -4163,6 +4205,8 @@ function playObject(instanceId) {
             logMessage("道具", `[毒药] 毒杀了油水最高的 ${victim.name}（${victim.loot}F），尸体归你。`, "warn");
         } else {
             logMessage("道具", "[毒药] 旅馆里没有可下毒的旅客。", "player");
+            restoreObjectAt(idx, obj);
+            return;
         }
     } else if (obj.effect === 'bury_discount') {
         objectEffects.buryDiscount += 1;
