@@ -2084,15 +2084,15 @@ const AI_PROFILES = {
     scheming:   { kill: 0.9,  bribe: 1.2, room: 0.9, service: 0.9, deny: 0.7, launderAt: 34, synergy: 0.7 },
     murderous:  { kill: 1.3,  bribe: 0.5, room: 0.7, service: 0.7, deny: 0.9, launderAt: 34, synergy: 0.7 },
     mastermind: { kill: 1.15, bribe: 1.0, room: 1.0, service: 1.0, deny: 1.0, launderAt: 32, synergy: 1.0 },
-    // 学习叔叔：先由 ml/opt_ml_uncle.js 用真实游戏 AI 无头自对弈 + ES 学到基础权重，
-    // 再由 ml/alphazero_long_train.js 进行 5.123 小时 AlphaZero 风格长训（自我对弈 + PUCT-MCTS + policy/value 蒸馏）。
-    // 最佳候选：run 6 / seed 20308137；对当前 ML 复测胜率 61.25%，平均分差 +8.7，已通过晋级保护线。
+    // 学习叔叔：先由 ml/alphazero_long_train.js 做 AlphaZero 风格长训，
+    // 再用 ml/opt_ml_uncle.js 在当前真实 AI 引擎上做 ES 增量训练。
+    // 本轮确认评估(360局)：财富份额 46.1% vs 基线 42.6%，夺魁率 68.6% vs 62.5%。
     ml: {
-        kill: 1.266, bribe: 1.126, room: 0.993, service: 0.795, deny: 1.2, launderAt: 24, synergy: 0.313,
+        kill: 0.857, bribe: 1.016, room: 1.609, service: 1.119, deny: 0.96, launderAt: 24, synergy: 0.336,
         phase: {
-            early: { kill: 0.596, room: 2.236, service: 2.148 },
-            mid:   { kill: 0.731, room: 0.638, service: 1.243 },
-            late:  { kill: 1.497, room: 0.321, service: 0.286 },
+            early: { kill: 1.137, room: 2.286, service: 1.855 },
+            mid:   { kill: 0.776, room: 0.142, service: 1.127 },
+            late:  { kill: 1.863, room: 0.05, service: 0.411 },
         },
     },
 };
