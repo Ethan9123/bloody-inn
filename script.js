@@ -2525,14 +2525,14 @@ function planReasonText(self, plan, ctx) {
     if (plan.type === 'kill') {
         let bits = [`目标油水高，刺杀后有 ${plan.spot.occupant.loot}F 潜在收益`];
         if (plan.spot.ownerKey !== seatKeyOf(self)) bits.push('还能切断对手这轮退房收入');
-        if (ctx.policeLurking) bits.push('但警察在店里会放大未埋尸风险');
+        if (ctx.policeLurking) bits.push('但清晨调查会放大未埋尸风险');
         return bits.join('；') + '。';
     }
     if (plan.type === 'multi_kill') return `肉铺已经建好，一次处理 ${plan.spots.length} 名住客能把行动效率拉满，但会增加未埋尸体压力。`;
     if (plan.type === 'bribe') return `${target} 既能当帮工，也可能成为后续别馆建材；手牌价值比单纯等退房更高。`;
     if (plan.type === 'multi_bribe') return `商铺允许一次拉拢多名旅客，能同时补手牌、截断对手租金和囤建材。`;
     if (plan.type === 'peasants') return `手牌只有 ${ctx.handSize} 张，先补廉价帮工，后面刺杀、埋尸、建造才付得起成本。`;
-    if (plan.type === 'bury') return `手里有 ${self.corpses.length} 具未埋尸体，${ctx.policeLurking ? '警察已出现，先降风险' : '现在埋掉能把油水落袋'}。`;
+    if (plan.type === 'bury') return `手里有 ${self.corpses.length} 具未埋尸体，${ctx.policeLurking ? '清晨要调查，先降风险' : '现在埋掉能把油水落袋'}。`;
     if (plan.type === 'multi_bury') return `地下墓室允许一次埋多具尸体，能集中落袋并显著降低警察风险。`;
     if (plan.type === 'build') return `这张牌能建成 ${target}，当前阶段更看重长期引擎和埋尸空间。`;
     if (plan.type === 'room') return `还有中立客房可抢，占下来会增加后续入住、租金和目标控制权。`;
@@ -2556,7 +2556,7 @@ function castPlanAnalysis(self, plans, plan, ctx) {
         `手牌 ${self.hand.length}`,
         `未埋尸体 ${self.corpses.length}/${ctx.freeBury} 坑`,
         `阶段 ${ctx.phaseText}`,
-        ctx.policeLurking ? '警察在店' : '暂无警察',
+        ctx.policeLurking ? '清晨会调查' : '暂无调查',
         alt ? `备选：${alt}` : ''
     ];
     castLine(`${name} 的算盘`, main, 'ai', details);
@@ -2587,7 +2587,7 @@ function aiStrategicAction(self) {
             occupied = allOccupiedSpots(); // 毒杀后刷新大堂占位
         }
     }
-    const policeLurking = occupied.some(s => s.occupant.role === 'police');
+    let policeLurking = occupied.some(s => s.occupant.role === 'police');
     // 道具：[咖啡]招待大堂里等级最高的住客（1F×等级，不占行动；该住客随后不能被下毒）
     let coffeeCands = occupied.map(s => s.occupant).filter(c => getCardRank(c, 'bribe') >= 1 && !c.hasCoffee);
     if (coffeeCands.length > 0 && (self.objects || []).some(o => o.effect === 'coffee')) {
@@ -2608,6 +2608,13 @@ function aiStrategicAction(self) {
             logMessage("AI", `${self.name}打出[举报信]：今晚就算没警察，也要清算所有未埋尸体！`, "warn");
         }
     }
+    policeLurking = policeLurking || !!roundEffects.forceInvestigation;
+    const investigationAfterRemoving = removedCards => {
+        let removed = Array.isArray(removedCards) ? removedCards : [removedCards];
+        let removedIds = new Set(removed.filter(Boolean).map(c => c.id));
+        return !!roundEffects.forceInvestigation
+            || occupied.some(s => s.occupant.role === 'police' && !removedIds.has(s.occupant.id));
+    };
     // 道具[地毯]：把对手一具高油水(≥18)未埋尸体卷走据为己有，且自己还有埋葬位时才划算
     if ((self.objects || []).some(o => o.effect === 'claim_corpse') && uncleFreeBuryCapacity(self) > 0) {
         let pool = [];
@@ -2639,12 +2646,15 @@ function aiStrategicAction(self) {
 
     if (occupied.length > 0) {
         // A) 刺杀：尸体进未埋堆（钱要埋了才拿得到！）——估值要扣帮工损耗与警察风险
-        let killTarget = occupied.slice().sort((a, b) => b.occupant.loot - a.occupant.loot)[0];
+        const killPriority = spot => (spot.occupant.loot || 0)
+            + (isOpp(spot) ? 6 * prof.deny : 0)
+            + (spot.occupant.role === 'police' && self.corpses.length > 0 && !investigationAfterRemoving(spot.occupant) ? 14 : 0);
+        let killTarget = occupied.slice().sort((a, b) => killPriority(b) - killPriority(a))[0];
         let kCost = uncleNetCost(self, 'kill', killTarget.occupant);
         if (uncleCanPay(self, kCost)) {
             let loss = uncleHelperLoss(self, 'kill', kCost);
             let overflowRisk = (self.corpses.length + 1 > freeBury) ? 7 : 0; // 没坑还杀，要被警察罚
-            let policeRisk = policeLurking ? 5 : 0;
+            let policeRisk = investigationAfterRemoving(killTarget.occupant) ? 5 : 0;
             let kScore = killTarget.occupant.loot * 0.8 * prof.kill * pm.kill
                 - loss * 1.8 - overflowRisk - policeRisk
                 + (isOpp(killTarget) ? 6 : 0) * prof.deny;
@@ -2654,13 +2664,9 @@ function aiStrategicAction(self) {
 
         // A2) 肉铺：一次刺杀多名旅客。折扣按整次行动只扣一次，收益按行动压缩加权。
         if (uncleDiscount(self, ["肉铺"]) > 0 && occupied.length > 1) {
-            let killOptions = occupied.slice().sort((a, b) => {
-                const va = (a.occupant.loot || 0) + (isOpp(a) ? 7 * prof.deny : 0) + (a.occupant.role === 'police' && self.corpses.length > 0 ? 8 : 0);
-                const vb = (b.occupant.loot || 0) + (isOpp(b) ? 7 * prof.deny : 0) + (b.occupant.role === 'police' && self.corpses.length > 0 ? 8 : 0);
-                return vb - va;
-            });
+            let killOptions = occupied.slice().sort((a, b) => killPriority(b) - killPriority(a));
             let bestMulti = null;
-            for (let count = 2; count <= Math.min(4, killOptions.length); count++) {
+            for (let count = 2; count <= killOptions.length; count++) {
                 let spots = killOptions.slice(0, count);
                 let victims = spots.map(s => s.occupant);
                 let cost = uncleActionCostForTargets(self, 'kill', victims);
@@ -2669,7 +2675,7 @@ function aiStrategicAction(self) {
                 let loot = victims.reduce((s, c) => s + (c.loot || 0), 0);
                 let deny = spots.filter(isOpp).length * 5 * prof.deny;
                 let overflowRisk = Math.max(0, self.corpses.length + count - freeBury) * 7;
-                let policeRisk = (policeLurking && !victims.some(c => c.role === 'police')) ? 5 : 0;
+                let policeRisk = investigationAfterRemoving(victims) ? 5 : 0;
                 let score = loot * 0.72 * prof.kill * pm.kill + deny + (count - 1) * 4
                     - loss * 1.8 - overflowRisk - policeRisk;
                 if (score > 0) score *= syn.kill;
@@ -2714,7 +2720,7 @@ function aiStrategicAction(self) {
                     return vb - va;
                 });
                 let bestMulti = null;
-                for (let count = 2; count <= Math.min(4, ranked.length); count++) {
+                for (let count = 2; count <= ranked.length; count++) {
                     let spots = ranked.slice(0, count);
                     let targets = spots.map(s => s.occupant);
                     let cost = uncleActionCostForTargets(self, 'bribe', targets);
@@ -2779,7 +2785,6 @@ function aiStrategicAction(self) {
                 .filter(c => c.specialBurial !== 'bearded')
                 .sort((a, b) => (b.loot || 0) - (a.loot || 0))
                 .forEach(c => {
-                    if (burials.length >= 4) return;
                     let need = burialSlotsNeeded(c);
                     let target = usableSlots.find(s => s.used + need <= s.cap);
                     if (!target) return;
