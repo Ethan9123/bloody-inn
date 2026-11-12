@@ -2086,7 +2086,8 @@ const AI_PROFILES = {
     mastermind: { kill: 1.15, bribe: 1.0, room: 1.0, service: 1.0, deny: 1.0, launderAt: 32, synergy: 1.0 },
     // 学习叔叔：先由 ml/alphazero_long_train.js 做 AlphaZero 风格长训，
     // 再用 ml/opt_ml_uncle.js 在当前真实 AI 引擎上做 ES 增量训练。
-    // 本轮确认评估(360局)：财富份额 46.1% vs 基线 42.6%，夺魁率 68.6% vs 62.5%。
+    // 修正版训练器复测：4人局 AI 财富份额44.9% vs主线41.7%，分摊平局后夺魁70.1% vs58.5%。
+    // 每配置360局固定种子；人类席位只pass，非真人胜率，详见 ml/pr8-validation.json。
     ml: {
         kill: 0.857, bribe: 1.016, room: 1.609, service: 1.119, deny: 0.96, launderAt: 24, synergy: 0.336,
         phase: {

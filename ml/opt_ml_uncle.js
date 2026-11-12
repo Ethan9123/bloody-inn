@@ -45,23 +45,17 @@ const BOOTSTRAP = `
   // 人类当主理人时自动填客房（不影响策略，仅推进流程）
   welcomeGuestsSequentially=function(){
     var guard=0;
-    while(guard++<40){ var empty=rooms.filter(function(r){return isOpenRoom(r)&&!r.occupant;}); if(!empty.length)break; var c=drawTravelerCard(); if(!c)break; empty[0].occupant=c; }
+    while(guard++<40){ var empty=rooms.filter(function(r){return isOpenRoom(r)&&!r.occupant;}); if(!empty.length)break; var c=drawTravelerCard(); if(!c)break; empty[0].occupant=c; triggerRoomServiceImmediate(empty[0]); }
     setTimeout(finishWelcomePhase,0);
   };
   startObjectDraft=function(){ setTimeout(function(){ runPhaseWelcome(); },0); };
-  // 终局：算分入 __STANDINGS，停止调度
+  // Reuse the real scorer: room/trailer flushing, penalties, capped cash and annex bonuses.
+  var realGameOver = triggerGameOver;
   triggerGameOver=function(){
-    currentPhase='gameover';
-    function fine(p){ if(p.corpses&&p.corpses.length){ var pen=p.corpses.length*10, t=p.cash+p.checks*10; if(t>=pen){ var a=pen; while(a>=10&&p.checks>0){p.checks--;a-=10;} p.cash=Math.max(0,p.cash-a);} else {p.cash=0;p.checks=0;} p.corpses=[]; } }
-    fine(player); aiUncles.forEach(fine);
-    var cc={'artisan-red':0,'merchant-blue':0,'religious-purple':0,'noble-green':0};
-    exitStack.forEach(function(c){ if(cc[c.color]!==undefined)cc[c.color]++; });
-    function tot(p){ var t=p.cash+p.checks*10; (p.annexes||[]).forEach(function(a){ var an=a.card.annexName||'';
-      if(an.indexOf('温室')>=0)t+=p.checks*3; if(an.indexOf('议事厅')>=0)t+=p.checks*2;
-      if(an.indexOf('画廊')>=0)t+=new Set(p.annexes.map(function(x){return x.card.color;})).size*2;
-      if(an.indexOf('公园')>=0)t+=cc['artisan-red']*4; if(an.indexOf('杂货铺')>=0)t+=cc['merchant-blue']*4;
-      if(an.indexOf('主教区')>=0)t+=cc['religious-purple']*4; if(an.indexOf('马厩')>=0)t+=cc['noble-green']*4; }); return t; }
-    window.__STANDINGS=[{seat:'player',total:tot(player)}].concat(aiUncles.map(function(u){return {seat:u.idx,total:tot(u),ann:(u.annexes||[]).length-1};}));
+    if (window.__STANDINGS) return;
+    realGameOver();
+    window.__STANDINGS=[{seat:'player',total:player.cash+player.checks*10,tiebreak:annexBuriedCount(player)}]
+      .concat(aiUncles.map(function(u){return {seat:u.idx,total:u.cash+u.checks*10,tiebreak:annexBuriedCount(u),ann:(u.annexes||[]).length-1};}));
   };
 })();
 `;
@@ -77,7 +71,14 @@ function makeNode() {
     getBoundingClientRect() { return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 }; },
   };
 }
-function loadGame() {
+function seededRandom(seed) {
+  let state = seed >>> 0;
+  return () => { state += 0x6D2B79F5; let t = state;
+    t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+
+function loadGame(random = Math.random) {
   const q = [];
   const cache = {};
   const doc = {
@@ -88,7 +89,7 @@ function loadGame() {
   };
   const S = {
     console: { log() {}, warn() {}, error() {}, info() {} },
-    Math, Date, JSON, Array, Object, String, Number, Boolean, parseInt, parseFloat, isNaN, isFinite,
+    Math: Object.assign(Object.create(Math), { random }), Date, JSON, Array, Object, String, Number, Boolean, parseInt, parseFloat, isNaN, isFinite,
     Set, Map, Symbol, Promise, RegExp, Error,
     document: doc,
     setTimeout(fn) { q.push(fn); return 0; }, clearTimeout() {}, setInterval() { return 0; }, clearInterval() {},
@@ -104,40 +105,54 @@ function loadGame() {
   return { S, q };
 }
 
-function runGame(diffs, playerCount, mlWeights) {
-  const { S, q } = loadGame();
+function runGame(diffs, playerCount, mlWeights, random = Math.random) {
+  const { S, q } = loadGame(random);
   if (mlWeights) S.__G.AI_PROFILES.ml = JSON.parse(JSON.stringify(mlWeights));
   S.__G.setConfig(playerCount, diffs.slice(),
     { carnies: false, carnieEvents: false, notables: false, fanNotables: false, objects: false, sound: false }, 'short');
-  try { S.startGame(); } catch (e) { return null; }
+  S.startGame();
   let it = 0;
-  while (q.length && !S.__STANDINGS && it++ < 600000) { const fn = q.shift(); try { fn(); } catch (e) {} }
-  if (!S.__STANDINGS) return null;
+  while (q.length && !S.__STANDINGS && it++ < 600000) { const fn = q.shift(); fn(); }
+  if (!S.__STANDINGS) throw new Error("Headless game did not finish");
   const mlSeat = diffs.indexOf('ml');
   const st = S.__STANDINGS;
   const mlRow = st.find(s => s.seat === mlSeat);
   return { standings: st, mlTotal: mlRow ? mlRow.total : 0, mlBuilds: mlRow ? (mlRow.ann || 0) : 0 };
 }
 
-function evaluate(mlWeights, games, opponents, playerCount) {
-  let wins = 0, sum = 0, builds = 0, plays = 0, errs = 0, shareSum = 0;
-  for (let g = 0; g < games; g++) {
-    const diffs = ['ml'].concat(opponents).slice(0, playerCount - 1);
-    while (diffs.length < playerCount - 1) diffs.push('mastermind');
-    // 随机洗座位顺序（避免座位偏差）
-    for (let i = diffs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[diffs[i], diffs[j]] = [diffs[j], diffs[i]]; }
-    const r = runGame(diffs, playerCount, mlWeights);
-    if (!r) { errs++; continue; }
-    plays++; sum += r.mlTotal; builds += r.mlBuilds;
-    const aiTotals = r.standings.filter(s => s.seat !== 'player').map(s => s.total);
-    const totAll = aiTotals.reduce((a, b) => a + Math.max(0, b), 0) || 1;
-    shareSum += Math.max(0, r.mlTotal) / totAll; // 财富份额：>0.333 即强于平均，平滑梯度
-    if (r.mlTotal >= Math.max(...aiTotals) - 1e-9) wins++;
-  }
-  return { share: plays ? shareSum / plays : 0, winrate: plays ? wins / plays : 0, avgTotal: plays ? sum / plays : 0, avgBuilds: plays ? builds / plays : 0, plays, errs };
+function pickOpponents(opponents, playerCount, random = Math.random) {
+  if (![2, 3, 4].includes(playerCount)) throw new Error('playerCount must be 2, 3 or 4');
+  const pool = opponents.slice();
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  const diffs = ['ml'].concat(pool.slice(0, playerCount - 2));
+  while (diffs.length < playerCount - 1) diffs.push('mastermind');
+  for (let i = diffs.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [diffs[i], diffs[j]] = [diffs[j], diffs[i]]; }
+  return diffs;
 }
 
+function evaluate(mlWeights, games, opponents, playerCount, seed = 20261112) {
+  if (!Number.isInteger(games) || games <= 0) throw new Error('games must be a positive integer');
+  let wins = 0, sum = 0, builds = 0, shareSum = 0;
+  for (let g = 0; g < games; g++) {
+    // Reset per-game RNG so different profiles use the same seeds and opponent schedule.
+    const random = seededRandom(seed + g);
+    const diffs = pickOpponents(opponents, playerCount, random);
+    const r = runGame(diffs, playerCount, mlWeights, random);
+    sum += r.mlTotal; builds += r.mlBuilds;
+    const ais = r.standings.filter(s => s.seat !== 'player');
+    const totAll = ais.reduce((a, b) => a + Math.max(0, b.total), 0) || 1;
+    shareSum += Math.max(0, r.mlTotal) / totAll;
+    const best = ais.reduce((a, b) => (b.total > a.total || (b.total === a.total && b.tiebreak > a.tiebreak)) ? b : a);
+    const tied = ais.filter(a => a.total === best.total && a.tiebreak === best.tiebreak);
+    if (tied.some(a => a.seat === diffs.indexOf('ml'))) wins += 1 / tied.length;
+  }
+  return { share: shareSum / games, winrate: wins / games, avgTotal: sum / games, avgBuilds: builds / games, plays: games, errs: 0 };
+}
+
+module.exports = { loadGame, runGame, evaluate, pickOpponents, seededRandom };
+
 // ---------- 主程序 ----------
+if (require.main === module) {
 const GEN = parseInt(process.argv[2] || '12', 10);
 const GAMES = parseInt(process.argv[3] || '120', 10);
 const BASE_ML = JSON.parse(JSON.stringify(loadGame().S.__G.AI_PROFILES.ml));
@@ -156,7 +171,7 @@ if (process.argv.includes('selftest')) {
 if (process.argv.includes('confirm')) {
   const cands = JSON.parse(fs.readFileSync(path.join(__dirname, 'candidates.json'), 'utf8'));
   const N = GAMES;
-  console.log('无偏对比（每配置 ' + N + ' 局）  4人对手 mastermind/murderous/scheming（均势份额33%）；3人对手 mastermind/murderous（均势50%）\n');
+  console.log('无偏对比（每配置 ' + N + ' 局）  4人每局抽2个对手（AI份额基线33%）；3人每局抽1个对手（AI份额基线50%）\n');
   for (const name of Object.keys(cands)) {
     const w = cands[name];
     const e4 = evaluate(w, N, ['mastermind', 'murderous', 'scheming'], 4);
@@ -169,7 +184,7 @@ if (process.argv.includes('confirm')) {
 }
 
 const opponents = ['mastermind', 'murderous', 'scheming'];
-console.log('\n基线评估当前 ml（4人，对手 mastermind/murderous/scheming，' + GAMES + '局）……');
+console.log('\n基线评估当前 ml（4人，每局从 mastermind/murderous/scheming 抽2个对手，' + GAMES + '局）……');
 const base = evaluate(BASE_ML, GAMES, opponents, 4);
 console.log('  基线 ml：财富份额 ' + (base.share * 100).toFixed(1) + '%  夺魁率 ' + (base.winrate * 100).toFixed(1) + '%  平均身价 ' + base.avgTotal.toFixed(1) + '  平均建馆 ' + base.avgBuilds.toFixed(2) + '  (有效' + base.plays + '/错误' + base.errs + ')');
 
@@ -191,7 +206,7 @@ for (let gen = 0; gen < GEN; gen++) {
   const sigma = 0.28 * Math.pow(0.9, gen);
   const all = pop.slice();
   for (let i = 0; i < LAMBDA; i++) all.push({ w: mutate(pop[i % pop.length].w, sigma), fit: 0, winrate: 0, avgTotal: 0 });
-  for (const c of all) { const e = evaluate(c.w, GAMES, opponents, 4); c.fit = e.share; c.winrate = e.winrate; c.avgTotal = e.avgTotal; c.avgBuilds = e.avgBuilds; }
+  for (const c of all) { const e = evaluate(c.w, GAMES, opponents, 4, 20261112 + (gen + 1) * GAMES); c.fit = e.share; c.winrate = e.winrate; c.avgTotal = e.avgTotal; c.avgBuilds = e.avgBuilds; }
   all.sort((a, b) => b.fit - a.fit || b.winrate - a.winrate);
   pop = all.slice(0, MU);
   // 深拷贝快照，避免后续世代重评估时改写 best 引用
@@ -200,11 +215,13 @@ for (let gen = 0; gen < GEN; gen++) {
 }
 // 防选择偏差：对最终候选在更大样本上做无偏确认评估
 console.log('\n确认评估（' + (GAMES * 3) + '局无偏）……');
-const confBest = evaluate(best.w, GAMES * 3, opponents, 4);
-const confBase = evaluate(BASE_ML, GAMES * 3, opponents, 4);
+const confBest = evaluate(best.w, GAMES * 3, opponents, 4, 30261112);
+const confBase = evaluate(BASE_ML, GAMES * 3, opponents, 4, 30261112);
 console.log('  基线 ml：份额 ' + (confBase.share * 100).toFixed(1) + '%  夺魁率 ' + (confBase.winrate * 100).toFixed(1) + '%  身价 ' + confBase.avgTotal.toFixed(1) + '  建馆 ' + confBase.avgBuilds.toFixed(2));
 console.log('  进化 ml：份额 ' + (confBest.share * 100).toFixed(1) + '%  夺魁率 ' + (confBest.winrate * 100).toFixed(1) + '%  身价 ' + confBest.avgTotal.toFixed(1) + '  建馆 ' + confBest.avgBuilds.toFixed(2));
 console.log('\n=== 最优 ml 权重 ===');
 console.log(JSON.stringify(best.w));
 fs.writeFileSync(path.join(__dirname, 'best_ml_weights.json'), JSON.stringify({ base: BASE_ML, baseConf: confBase, best: best.w, bestConf: confBest }, null, 1));
 console.log('已写入 ml/best_ml_weights.json');
+
+}
